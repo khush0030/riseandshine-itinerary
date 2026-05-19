@@ -1,4 +1,5 @@
 import { generateObject } from "ai";
+import { z } from "zod";
 import {
   DayPlanSchema, Intel, type Day, type Place, type TripRequest,
 } from "@/lib/itinerary/schema";
@@ -138,35 +139,127 @@ Non-negotiables:
 - sightseeing/activity blocks: set "place" to the matched attraction. Be specific and detailed in "detail" (what to actually do/see there, best timing, ≤24 words). title ≤6 words.
 - Continuous timed schedule (24h HH:MM), realistic transit & rest, no gaps/overlaps. Output strictly matches the schema.`;
 
-/** Claude path: structured, travel-efficient hour-by-hour days grounded on real data. */
-export async function composeDaysWithClaude(
-  req: TripRequest, ctx: ComposeContext,
-): Promise<Day[] | null> {
-  const model = getItineraryModel();
-  if (!model) return null;
+/**
+ * LEAN model schema: the model only emits place/restaurant *names* (it must
+ * pick from the grounded lists). Full Place objects (photos/coords/maps) are
+ * re-attached in code. Keeps structured output small ⇒ fast & reliable.
+ */
+const LeanPlan = z.object({
+  days: z.array(z.object({
+    date: z.string(),
+    cityLabel: z.string(),
+    headline: z.string(),
+    efficiency: z.string(),
+    skip: z.array(z.string()).min(1),
+    blocks: z.array(z.object({
+      start: z.string(), end: z.string(),
+      kind: z.enum(["travel", "checkin", "sightseeing", "activity", "meal", "leisure", "transfer"]),
+      title: z.string(), detail: z.string(),
+      placeName: z.string().nullable(),
+      optionNames: z.array(z.string()).default([]),
+    })),
+  })),
+});
+
+const CITY_TIMEOUT_MS = 60_000;
+
+function cityGroundingJSON(
+  req: TripRequest, ctx: ComposeContext, c: CityContext,
+  role: { isFirst: boolean; isLast: boolean; prevCity: string | null; dayCount: number },
+) {
+  return JSON.stringify({
+    destination: ctx.dest.name,
+    city: c.name,
+    hotel: c.hotelName, hotelLat: c.hotelLat, hotelLng: c.hotelLng,
+    daysToPlan: role.dayCount,
+    group: { adults: req.adults, children: req.children, childrenAges: req.childrenAges },
+    diet: req.diet, interests: req.interests, travelStyle: req.travelStyle,
+    role: {
+      ...(role.isFirst
+        ? { firstDayIsArrival: true, flightArrival: ctx.arrivalLabel }
+        : { firstDayIsTransferFrom: role.prevCity }),
+      ...(role.isLast ? { lastDayIsDeparture: true, flightDeparture: ctx.departureLabel } : {}),
+    },
+    attractions: c.pois.attractions.map(slim),
+    restaurants: c.pois.restaurants.map(slim),
+  });
+}
+
+/** Generate ONE city's day-block plan (lean, grounded, time-boxed). */
+async function composeCity(
+  req: TripRequest, ctx: ComposeContext, c: CityContext,
+  role: { isFirst: boolean; isLast: boolean; prevCity: string | null; dayCount: number },
+) {
+  const model = getItineraryModel()!;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), CITY_TIMEOUT_MS);
   try {
     const { object } = await generateObject({
       model,
-      schema: DayPlanSchema,
+      schema: LeanPlan,
       system: SYSTEM,
       prompt:
-        `Build the full ${ctx.totalDays}-day itinerary from this real data:\n` +
-        groundingJSON(req, ctx) +
-        `\nReturn exactly ${ctx.totalDays} days, dayIndex 0..${ctx.totalDays - 1}, dates from ${req.startDate}. ` +
+        `Plan ONLY the ${role.dayCount} day(s) in ${c.name} from this real data:\n` +
+        cityGroundingJSON(req, ctx, c, role) +
+        `\nReturn exactly ${role.dayCount} day object(s) for ${c.name}. ` +
+        (role.isFirst
+          ? `Day 1 starts at the flight arrival ("${ctx.arrivalLabel}") + transfer to the hotel; keep day 1 light. `
+          : `Day 1 here opens with the inbound transfer from ${role.prevCity} + hotel check-in. `) +
+        (role.isLast ? `The final day ends with the airport transfer + departure ("${ctx.departureLabel}"). ` : "") +
+        `placeName/optionNames MUST be exact names copied from the lists. ` +
         `Every day MUST include "efficiency" and a non-empty "skip" array.`,
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
-      maxRetries: 1,
+      maxRetries: 0,
+      abortSignal: ac.signal,
     });
-    return object.days.map((d) => ({
-      ...d,
-      blocks: d.blocks.map((b) => ({
-        ...b,
-        place: b.place ? (findPlace(ctx, b.place.name) ?? b.place) : null,
-        options: (b.options ?? []).map((o) => findPlace(ctx, o.name) ?? o),
-      })),
-    }));
+    return object.days;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Claude path: each city planned in PARALLEL (smaller, concurrent calls — far
+ * faster & more reliable than one giant generation), then stitched in order.
+ */
+export async function composeDaysWithClaude(
+  req: TripRequest, ctx: ComposeContext,
+): Promise<Day[] | null> {
+  if (!getItineraryModel()) return null;
+  const last = ctx.cities.length - 1;
+  const roles = ctx.cities.map((c, i) => ({
+    isFirst: i === 0,
+    isLast: i === last,
+    prevCity: i === 0 ? null : ctx.cities[i - 1].name,
+    dayCount: c.nights + (i === last ? 1 : 0), // +1 = departure day on last city
+  }));
+  try {
+    const perCity = await Promise.all(
+      ctx.cities.map((c, i) => composeCity(req, ctx, c, roles[i])),
+    );
+    let idx = 0;
+    const days: Day[] = [];
+    for (const cityDays of perCity) {
+      if (!cityDays?.length) return null; // any city failed ⇒ whole fallback
+      for (const d of cityDays) {
+        const date = addDays(req.startDate, idx);
+        days.push({
+          dayIndex: idx, date, weekday: weekday(date),
+          cityLabel: d.cityLabel, headline: d.headline,
+          efficiency: d.efficiency, skip: d.skip ?? [],
+          blocks: d.blocks.map((b) => ({
+            start: b.start, end: b.end, kind: b.kind, title: b.title, detail: b.detail,
+            place: b.placeName ? findPlace(ctx, b.placeName) : null,
+            options: (b.optionNames ?? [])
+              .map((n) => findPlace(ctx, n)).filter((p): p is Place => p !== null),
+          })),
+        });
+        idx++;
+      }
+    }
+    return days.length ? days : null;
   } catch {
-    return null;
+    return null; // timeout / failure ⇒ deterministic template takes over
   }
 }
 
