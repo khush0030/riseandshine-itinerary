@@ -101,32 +101,49 @@ export default function Page() {
   return (
     <>
       <Script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" strategy="lazyOnload" />
-      <header className="app-header">
-        <div className="brand">
-          <div className="brand-logo-chip"><img src="/assets/logo.png" alt="Rise & Shine Travel" /></div>
-          <div className="brand-text">
-            <h1>AI Itinerary Generator</h1>
-            <p>Live data · Ahmedabad · IATTE member</p>
+      <header className="topbar">
+        <a className="logo" href="https://www.riseandshinetravel.com/" target="_blank" rel="noopener noreferrer">
+          <img className="brand-img" src="/assets/logo.png" alt="Rise & Shine Travel" />
+          <div className="wm">
+            <b>Rise &amp; Shine</b>
+            <span>TRAVEL · AHMEDABAD</span>
           </div>
+        </a>
+        <div className="topdiv" />
+        <div className="toptitle">
+          <b>AI Itinerary Generator</b>
+          <span>Live tool · v2.0 · IATTE member</span>
         </div>
-        <div className="header-meta">
-          <div className="tool-tag">Live Tool · v2.0</div>
-          <div>Amadeus · Google Places · Claude · Reddit</div>
+        <div className="topright">
+          <div className="livebadge"><span className="dot" />LIVE</div>
+          <div className="techstack">Amadeus · Google Places<br />Claude · Reddit</div>
         </div>
       </header>
 
       <div className="layout">
         <aside className="form-panel">
-          <div className="section-title">Client</div>
+          <div className="formhead">
+            <div className="hd-left">
+              <div className="eyebrow">Build a trip</div>
+              <h2>Plan the journey</h2>
+            </div>
+            <p>Fill the brief — branded, hour-by-hour plan from live data.</p>
+          </div>
+          <div className="formbody">
+          <div className="formcols">
+          <div className="formcol">
+          <div className="section-title"><span className="st-ic">👤</span>Client</div>
           <div className="fg"><label>Client name</label>
             <input value={f.clientName} onChange={(e) => up("clientName", e.target.value)} /></div>
           <div className="fg"><label>Contact (WhatsApp)</label>
             <input value={f.clientPhone} onChange={(e) => up("clientPhone", e.target.value)} /></div>
-          <div className="fg"><label>Email <span style={{ color: "var(--muted)", fontWeight: 400 }}>(optional)</span></label>
+          <div className="fg"><label>Email <span style={{ color: "var(--ink-faint)", fontWeight: 500 }}>(optional)</span></label>
             <input type="email" placeholder="client@example.com" value={f.email}
               onChange={(e) => up("email", e.target.value)} /></div>
+          </div>
 
-          <div className="section-title">Trip</div>
+          <div className="formcol">
+          <div className="section-title"><span className="st-ic">📍</span>Trip</div>
           <div className="fg"><label>Destination scope</label>
             <div className="scope-pill">
               <button type="button" aria-pressed={scope === "domestic"}
@@ -161,8 +178,10 @@ export default function Page() {
           </div>
           <div className="fg"><label>Travel date</label>
             <input type="date" value={f.startDate} onChange={(e) => up("startDate", e.target.value)} /></div>
+          </div>
 
-          <div className="section-title">Group & preferences</div>
+          <div className="formcol">
+          <div className="section-title"><span className="st-ic">👥</span>Group &amp; preferences</div>
           <div className="row2">
             <div className="fg"><label>Adults</label>
               <input type="number" min={1} max={20} value={f.adults}
@@ -203,35 +222,45 @@ export default function Page() {
                   onClick={() => setInterests((s) => s.includes(i) ? s.filter((x) => x !== i) : [...s, i])}>{i}</span>
               ))}
             </div></div>
-          <div className="section-title">Booking assistance</div>
-          <div className="fg">
-            <div className="toggle-row">
-              <button type="button"
-                className={"butter-toggle" + (errToggle === "flights" ? " warn" : "")}
-                aria-pressed={f.flightAssist}
-                onClick={() => up("flightAssist", !f.flightAssist)}>
-                <span className="dot" />✈️ Flight assistance
-              </button>
-              <button type="button"
-                className={"butter-toggle" + (errToggle === "hotels" ? " warn" : "")}
-                aria-pressed={f.hotelAssist}
-                onClick={() => up("hotelAssist", !f.hotelAssist)}>
-                <span className="dot" />🏨 Hotel assistance
-              </button>
-              <button type="button"
-                className="butter-toggle"
-                aria-pressed={f.visaNeeded}
-                onClick={() => up("visaNeeded", !f.visaNeeded)}>
-                <span className="dot" />🛂 Visa assistance
-              </button>
-            </div>
-            <p className="hint">Toggling Flight / Hotel ON fetches real live options (cheapest + 4 alternatives) from Amadeus.</p>
+          </div>
           </div>
 
-          <button className="btn btn-primary" disabled={loading} onClick={generate}>
-            {loading ? <><span className="spin" /> &nbsp;Building live itinerary…</> : "⚡ Generate Live Itinerary"}
-          </button>
-          {err && <p style={{ color: "#dc2626", fontSize: 12, marginTop: 10 }}>⚠ {err}</p>}
+          <div className="formfoot">
+            <div className="ff-assist">
+              <div className="section-title section-title-inline"><span className="st-ic">🎫</span>Booking assistance</div>
+              <div className="toggle-row">
+                <button type="button"
+                  className={"butter-toggle" + (errToggle === "flights" ? " warn" : "")}
+                  aria-pressed={f.flightAssist}
+                  onClick={() => up("flightAssist", !f.flightAssist)}>
+                  <span className="dot" />✈️ Flight assistance
+                </button>
+                <button type="button"
+                  className={"butter-toggle" + (errToggle === "hotels" ? " warn" : "")}
+                  aria-pressed={f.hotelAssist}
+                  onClick={() => up("hotelAssist", !f.hotelAssist)}>
+                  <span className="dot" />🏨 Hotel assistance
+                </button>
+                <button type="button"
+                  className="butter-toggle"
+                  aria-pressed={f.visaNeeded}
+                  onClick={() => up("visaNeeded", !f.visaNeeded)}>
+                  <span className="dot" />🛂 Visa assistance
+                </button>
+              </div>
+              <p className="hint">Flight / Hotel ON = live options (cheapest + 4 alternatives) from Amadeus.</p>
+            </div>
+            <div className="ff-cta">
+              <button className="btn btn-primary" disabled={loading} onClick={generate}>
+                {loading
+                  ? <><span className="spin" />&nbsp;Building live itinerary…</>
+                  : <><svg className="cta-ic" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18l-2.2-5.8L3.5 10l6.3-1.7z"/></svg>Generate Live Itinerary</>}
+              </button>
+              <div className="gennote">Live flights, hotels &amp; places · ~20 seconds</div>
+              {err && <p style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>⚠ {err}</p>}
+            </div>
+          </div>
+          </div>
         </aside>
 
         <main className="preview-panel">
