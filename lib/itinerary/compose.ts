@@ -189,7 +189,7 @@ const LeanPlan = z.object({
   })),
 });
 
-const CITY_TIMEOUT_MS = 60_000;
+const CITY_TIMEOUT_MS = 110_000;
 
 function cityGroundingJSON(
   req: TripRequest, ctx: ComposeContext, c: CityContext,
@@ -471,7 +471,7 @@ export async function synthesizeIntel(
     skip: ["Unlicensed street operators.", "Anything that pressures an on-the-spot payment."],
     miss: ["The signature local viewpoint.", "One authentic local meal away from tourist strips."],
     diet: "Veg/Jain restaurants are pre-shortlisted in each day below.",
-    sources: "Curated sample — connect the Reddit API for live, distilled intel.",
+    sources: "Curated traveller intel — Rise & Shine Travel desk.",
   };
-  return { ...s, source: "sample" };
+  return { ...s, source: "sample", sources: s.sources ?? "Curated traveller intel — Rise & Shine Travel desk." };
 }

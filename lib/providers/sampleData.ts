@@ -111,26 +111,54 @@ export function sampleHotels(destKey: string, tier: 3 | 4 | 5, nightsByCity: num
   if (destKey === "thailand") {
     const map: Record<number, Hotel[]> = {
       3: [
-        { name: "Solitaire Bangkok Sukhumvit 11", area: "Bangkok · Sukhumvit", stars: 4, rating: 8.8, reviews: 1815, nights: n1, totalUSD: 62 * n1, strikeUSD: 103 * n1, lat: 13.745355, lng: 100.557451, bookUrl: "https://www.expedia.com/.h19849250.Hotel-Information", photoUrl: null, source: "sample", alternatives: [] },
-        { name: "Seeka Boutique Resort", area: "Phuket · near Patong", stars: 3, rating: 7.8, reviews: 167, nights: n2, totalUSD: 13 * n2, strikeUSD: 17 * n2, lat: 7.881398, lng: 98.297974, bookUrl: "https://www.expedia.com/.h36146764.Hotel-Information", photoUrl: null, source: "sample", alternatives: [] },
+        { name: "Solitaire Bangkok Sukhumvit 11", area: "Bangkok · Sukhumvit", stars: 4, rating: 8.8, reviews: 1815, nights: n1, totalUSD: 62 * n1, strikeUSD: 103 * n1, lat: 13.745355, lng: 100.557451, bookUrl: "https://www.google.com/maps/search/?api=1&query=Solitaire+Bangkok+Sukhumvit+11", photoUrl: null, source: "sample", alternatives: [] },
+        { name: "Seeka Boutique Resort", area: "Phuket · near Patong", stars: 3, rating: 7.8, reviews: 167, nights: n2, totalUSD: 13 * n2, strikeUSD: 17 * n2, lat: 7.881398, lng: 98.297974, bookUrl: "https://www.google.com/maps/search/?api=1&query=Seeka+Boutique+Resort+Patong+Phuket", photoUrl: null, source: "sample", alternatives: [] },
       ],
       4: [
-        { name: "Chatrium Hotel Riverside Bangkok", area: "Bangkok · Riverside", stars: 4, rating: 9.6, reviews: 1609, nights: n1, totalUSD: 167 * n1, strikeUSD: 256 * n1, lat: 13.710795, lng: 100.510011, bookUrl: "https://www.expedia.com/.h2558980.Hotel-Information", photoUrl: null, source: "sample", alternatives: [] },
-        { name: "The Shore at Katathani", area: "Phuket · Kata Noi", stars: 5, rating: 9.6, reviews: 957, nights: n2, totalUSD: 463 * n2, strikeUSD: 475 * n2, lat: 7.803246, lng: 98.30004, bookUrl: "https://www.expedia.com/.h3555818.Hotel-Information", photoUrl: null, source: "sample", alternatives: [] },
+        { name: "Chatrium Hotel Riverside Bangkok", area: "Bangkok · Riverside", stars: 4, rating: 9.6, reviews: 1609, nights: n1, totalUSD: 167 * n1, strikeUSD: 256 * n1, lat: 13.710795, lng: 100.510011, bookUrl: "https://www.google.com/maps/search/?api=1&query=Chatrium+Hotel+Riverside+Bangkok", photoUrl: null, source: "sample", alternatives: [] },
+        { name: "The Shore at Katathani", area: "Phuket · Kata Noi", stars: 5, rating: 9.6, reviews: 957, nights: n2, totalUSD: 463 * n2, strikeUSD: 475 * n2, lat: 7.803246, lng: 98.30004, bookUrl: "https://www.google.com/maps/search/?api=1&query=The+Shore+at+Katathani+Kata+Noi+Phuket", photoUrl: null, source: "sample", alternatives: [] },
       ],
       5: [
-        { name: "Park Hyatt Bangkok", area: "Bangkok · Wireless Rd", stars: 5, rating: 9.6, reviews: 594, nights: n1, totalUSD: 337 * n1, strikeUSD: 397 * n1, lat: 13.743808, lng: 100.547386, bookUrl: "https://www.expedia.com/.h17405012.Hotel-Information", photoUrl: null, source: "sample", alternatives: [] },
-        { name: "Anantara Layan Phuket Resort", area: "Phuket · Layan Beach", stars: 5, rating: 9.6, reviews: 442, nights: n2, totalUSD: 477 * n2, strikeUSD: null, lat: 8.035707, lng: 98.28452, bookUrl: "https://www.expedia.com/.h6758147.Hotel-Information", photoUrl: null, source: "sample", alternatives: [] },
+        { name: "Park Hyatt Bangkok", area: "Bangkok · Wireless Rd", stars: 5, rating: 9.6, reviews: 594, nights: n1, totalUSD: 337 * n1, strikeUSD: 397 * n1, lat: 13.743808, lng: 100.547386, bookUrl: "https://www.google.com/maps/search/?api=1&query=Park+Hyatt+Bangkok", photoUrl: null, source: "sample", alternatives: [] },
+        { name: "Anantara Layan Phuket Resort", area: "Phuket · Layan Beach", stars: 5, rating: 9.6, reviews: 442, nights: n2, totalUSD: 477 * n2, strikeUSD: null, lat: 8.035707, lng: 98.28452, bookUrl: "https://www.google.com/maps/search/?api=1&query=Anantara+Layan+Phuket+Resort", photoUrl: null, source: "sample", alternatives: [] },
       ],
     };
     return map[tier];
   }
+  // Curated partner-hotel picks per destination so sample stays look real.
+  const partners: Record<string, { name: string; area: string; lat: number; lng: number }[]> = {
+    rajasthan: [
+      { name: "Trident Jaipur", area: "Jaipur · Amer Road", lat: 26.992, lng: 75.852 },
+      { name: "Taj Lake Palace Udaipur", area: "Udaipur · Lake Pichola", lat: 24.5754, lng: 73.6831 },
+    ],
+    kerala: [
+      { name: "The Tall Trees Munnar", area: "Munnar · Anachal", lat: 10.0859, lng: 77.0608 },
+      { name: "Punnamada Resort Alleppey", area: "Alleppey · Backwaters", lat: 9.4793, lng: 76.3411 },
+      { name: "Brunton Boatyard Kochi", area: "Kochi · Fort Kochi", lat: 9.9667, lng: 76.2417 },
+    ],
+    mauritius: [{ name: "LUX* Grand Baie", area: "Grand Baie · North Coast", lat: -20.0067, lng: 57.5849 }],
+    maldives: [{ name: "Cinnamon Dhonveli Maldives", area: "North Malé Atoll", lat: 4.293, lng: 73.434 }],
+    bali: [
+      { name: "Padma Resort Ubud", area: "Ubud · Payangan", lat: -8.4214, lng: 115.2553 },
+      { name: "The Legian Seminyak", area: "Seminyak · Beachfront", lat: -8.6817, lng: 115.1567 },
+    ],
+  };
   const base = tier === 3 ? 55 : tier === 4 ? 120 : 260;
-  return nightsByCity.map((nt, i) => ({
-    name: `${tier}-Star Partner Hotel ${i + 1}`,
-    area: "City centre", stars: tier, rating: 8.6, reviews: 0, nights: nt,
-    totalUSD: base * nt, strikeUSD: null, lat: 0, lng: 0,
-    bookUrl: "https://www.google.com/travel/hotels", photoUrl: null, source: "sample",
-    alternatives: [],
-  }));
+  const picks = partners[destKey] ?? [];
+  return nightsByCity.map((nt, i) => {
+    const pick = picks[i];
+    const query = pick ? encodeURIComponent(`${pick.name} ${pick.area.split("·")[0].trim()}`) : "";
+    return {
+      name: pick?.name ?? `${tier}-Star Partner Hotel ${i + 1}`,
+      area: pick?.area ?? "City centre",
+      stars: tier, rating: 8.6, reviews: 0, nights: nt,
+      totalUSD: base * nt, strikeUSD: null,
+      lat: pick?.lat ?? 0, lng: pick?.lng ?? 0,
+      bookUrl: pick
+        ? `https://www.google.com/maps/search/?api=1&query=${query}`
+        : "https://www.google.com/travel/hotels",
+      photoUrl: null, source: "sample" as const,
+      alternatives: [],
+    };
+  });
 }

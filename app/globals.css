@@ -401,6 +401,28 @@ button{font-family:inherit;cursor:pointer}
 .bline{display:none}
 .btitle{font-size:13.5px;font-weight:800;letter-spacing:-.005em;color:var(--ink)}
 .bdetail{font-size:12px;color:var(--ink-soft);margin-top:3px;font-weight:500;line-height:1.5}
+.bbody{min-width:0;display:flex;flex-direction:column;gap:0}
+.bhero{
+  display:block;position:relative;overflow:hidden;
+  border-radius:var(--r-sm);margin-bottom:10px;
+  background:var(--field);text-decoration:none;
+  aspect-ratio:16/8;border:1px solid var(--line);
+}
+.bhero img{width:100%;height:100%;object-fit:cover;display:block;transition:.3s}
+.bhero:hover img{transform:scale(1.03)}
+.bhero-tag{
+  position:absolute;left:10px;bottom:10px;
+  background:rgba(22,32,44,.78);color:#fff;
+  font-size:11px;font-weight:700;letter-spacing:.02em;
+  padding:5px 10px;border-radius:999px;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.blk.has-hero{background:var(--surface);border-color:var(--line)}
+.opt-fallback{
+  width:40px;height:40px;border-radius:8px;
+  background:var(--brand-soft);color:var(--brand);
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex:none;
+}
 .placechip{
   display:flex;gap:10px;align-items:center;margin-top:9px;
   border:1px solid var(--line);border-radius:var(--r-sm);

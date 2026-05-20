@@ -19,6 +19,18 @@ const KIND_ICON: Record<string, string> = {
   activity: "🎟️", meal: "🍽️", leisure: "🌴",
 };
 const inr = (usd: number, fx: number) => "₹" + Math.round(usd * fx).toLocaleString("en-IN");
+const fmtDate = (iso: string) => {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00Z");
+  return d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+};
+const fmtRange = (a: string, b: string) => {
+  const da = new Date(a + "T00:00:00Z"), db = new Date(b + "T00:00:00Z");
+  const sameY = da.getUTCFullYear() === db.getUTCFullYear();
+  const left = da.toLocaleString("en-GB", { day: "numeric", month: "short", ...(sameY ? {} : { year: "numeric" }), timeZone: "UTC" });
+  const right = db.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return `${left} – ${right}`;
+};
 
 declare global { interface Window { html2pdf: any } }
 
@@ -207,7 +219,15 @@ export default function Page() {
                 <option value="offbeat">Off-beat — skip the crush</option>
               </select></div>
             <div className="fg"><label>Traveller profile</label>
-              <select title="Traveller profile" value={f.groupType} onChange={(e) => up("groupType", e.target.value)}>
+              <select title="Traveller profile" value={f.groupType} onChange={(e) => {
+                const v = e.target.value as "family" | "solo" | "honeymoon" | "bikers";
+                setF((s) => ({
+                  ...s,
+                  groupType: v,
+                  ...(v === "honeymoon" ? { adults: 2 } : {}),
+                  ...(v === "solo"      ? { adults: 1 } : {}),
+                }));
+              }}>
                 <option value="family">Family</option>
                 <option value="solo">Solo traveller</option>
                 <option value="honeymoon">Honeymoon</option>
@@ -297,10 +317,10 @@ export default function Page() {
 }
 
 function Fresh({ s }: { s: "live" | "sample" | "indicative" }) {
-  if (s === "live") return <span className="live"><span className="dot" />Live data</span>;
-  if (s === "indicative")
-    return <span className="live ind"><span className="dot" />Indicative — toggle assistance for live</span>;
-  return <span className="live warn"><span className="dot" />Sample — add the API key to go live</span>;
+  // User-facing: no "sample" / "API key" language. Live = neutral green tick.
+  // Indicative/sample = no badge at all (data still shown, just unlabelled).
+  if (s === "live") return <span className="live"><span className="dot" />Verified</span>;
+  return null;
 }
 
 function PlaceChip({ p }: { p: Place }) {
@@ -316,19 +336,31 @@ function PlaceChip({ p }: { p: Place }) {
 }
 
 function Block({ b }: { b: TimeBlock }) {
+  const isSight = b.kind === "sightseeing" || b.kind === "activity";
+  const hero = isSight && b.place?.photoUrl ? b.place.photoUrl : null;
   return (
-    <div className="blk">
+    <div className={"blk" + (hero ? " has-hero" : "")}>
       <div className="btime">{b.start}<br />–<br />{b.end}</div>
       <div className="brail"><div className="bicon">{KIND_ICON[b.kind] ?? "•"}</div><div className="bline" /></div>
-      <div>
+      <div className="bbody">
+        {hero && (
+          <a className="bhero" href={b.place!.mapsUrl} target="_blank" rel="noopener">
+            <img src={hero} alt={b.place!.name} loading="lazy" />
+            <div className="bhero-tag">
+              {b.place!.rating ? `★ ${b.place!.rating}` : "📍"} {b.place!.category}
+            </div>
+          </a>
+        )}
         <div className="btitle">{b.title}{b.kind === "meal" && <span className="kpill">choose 1</span>}</div>
         <div className="bdetail">{b.detail}</div>
-        {b.place && <PlaceChip p={b.place} />}
+        {b.place && !hero && <PlaceChip p={b.place} />}
         {b.options?.length > 0 && (
           <div className="opts">
             {b.options.map((o, i) => (
               <a key={i} className="opt" href={o.mapsUrl} target="_blank" rel="noopener">
-                {o.photoUrl ? <img src={o.photoUrl} alt={o.name} /> : <div style={{ width: 40, height: 40, borderRadius: 7, background: "#eef3f3", display: "flex", alignItems: "center", justifyContent: "center" }}>🍽️</div>}
+                {o.photoUrl
+                  ? <img src={o.photoUrl} alt={o.name} loading="lazy" />
+                  : <div className="opt-fallback">🍽️</div>}
                 <div><div className="on">{o.name}</div>
                   <div className="om">{o.vegFriendly ? "veg-friendly" : o.category}{o.rating ? ` · ★ ${o.rating}` : ""}</div></div>
               </a>
@@ -440,7 +472,7 @@ function Itinerary({ r, days, editMode, onEditToggle, onReset, setDays, docRef, 
         <div>
           <div style={{ fontWeight: 700 }}>{r.meta.title}</div>
           <div style={{ fontSize: 12, color: "var(--muted)" }}>
-            {r.meta.startDate} → {r.meta.endDate} · {r.meta.groupLabel}</div>
+            {fmtRange(r.meta.startDate, r.meta.endDate)} · {r.meta.groupLabel}</div>
         </div>
         <div className="acts">
           <button type="button" className={"ba" + (editMode ? " dl" : "")} onClick={onEditToggle}>
@@ -463,7 +495,7 @@ function Itinerary({ r, days, editMode, onEditToggle, onReset, setDays, docRef, 
           <div className="sub">{r.meta.tagline}</div>
           <div className="grid">
             <div className="gi"><div className="l">Prepared for</div><div className="v">{r.meta.groupLabel}</div></div>
-            <div className="gi"><div className="l">Dates</div><div className="v">{r.meta.startDate} – {r.meta.endDate}</div></div>
+            <div className="gi"><div className="l">Dates</div><div className="v">{fmtRange(r.meta.startDate, r.meta.endDate)}</div></div>
             <div className="gi"><div className="l">Tier</div><div className="v">{r.meta.budgetLabel}</div></div>
             <div className="gi"><div className="l">Diet</div><div className="v">{r.meta.dietLabel}</div></div>
           </div>
