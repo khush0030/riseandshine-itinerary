@@ -1,0 +1,156 @@
+import type { SeedDestination } from "./types";
+
+/** DUBAI — 6 nights / 7 days · 4 travellers · single base in JLT. */
+export const DUBAI: SeedDestination = {
+  key: "dubai",
+  name: "Dubai",
+  title: "Dubai — Skyline, Desert & Sea",
+  tagline: "Record-breaking landmarks, a desert night and easy family days — one comfortable base.",
+  flag: "🇦🇪",
+  scope: "international",
+  originAirport: "AMD",
+  originCity: "Ahmedabad",
+  startDate: "2026-12-05",
+  nights: 6,
+  pax: { adults: 2, children: 2, infants: 0, childrenAges: [8, 11] },
+
+  cities: [
+    { name: "Dubai", fromDayIndex: 0, nights: 6, lat: 25.0772, lng: 55.1395 },
+  ],
+
+  flights: {
+    outbound: {
+      airline: "IndiGo", flightNo: "6E-1412",
+      from: "AMD", fromCity: "Ahmedabad", to: "DXB", toCity: "Dubai",
+      dayIndex: 0, depTime: "09:30", arrTime: "11:00", duration: "2h 30m",
+      cabin: "Economy", baggage: "25kg checked + 7kg cabin", stops: "Direct (non-stop)",
+    },
+    inbound: {
+      airline: "IndiGo", flightNo: "6E-1413",
+      from: "DXB", fromCity: "Dubai", to: "AMD", toCity: "Ahmedabad",
+      dayIndex: 6, depTime: "13:00", arrTime: "17:00", duration: "2h 30m",
+      cabin: "Economy", baggage: "25kg checked + 7kg cabin", stops: "Direct (non-stop)",
+    },
+    note: "One of the shortest international routes from Ahmedabad — direct both ways, UAE is 1.5 hours behind IST.",
+  },
+
+  hotels: [
+    {
+      name: "Mövenpick Hotel Jumeirah Lakes Towers", city: "Dubai",
+      area: "Jumeirah Lakes Towers (JLT)", stars: 4, kind: "hotel",
+      fromDayIndex: 0, nights: 6,
+      why: "A strong-value 4★ a five-minute walk from the Metro, with family rooms and good Gujarati-vegetarian dining nearby.",
+      amenities: ["Rooftop pool", "Multi-cuisine restaurant", "Gym", "Metro 5-min walk", "Near Dubai Marina"],
+      lat: 25.0693, lng: 55.1419,
+    },
+  ],
+
+  visa: {
+    status: "required",
+    statusLabel: "VISA REQUIRED",
+    type: "30-day UAE Tourist Visa (single entry)",
+    feePerPersonINR: 6710,
+    stay: "30 days",
+    processing: "3–4 working days",
+    documents: [
+      "Passport — minimum 6 months validity",
+      "2 colour photographs — white background",
+      "Confirmed hotel booking — all 6 nights",
+      "Return flight ticket",
+      "Bank statement — last 3 months",
+    ],
+    riseShineHandles: [
+      "Complete visa application prepared for all 4 passengers",
+      "Submitted to VFS Global on the client's behalf",
+      "Application status tracked end to end",
+      "Visa delivered 3–4 days before departure",
+      "Visa fee and processing included in the package price",
+    ],
+    note: "Applied through VFS Global. The 30-day tourist visa is ₹6,710 per person — included in your package total below.",
+  },
+
+  venues: [
+    { name: "Burj Khalifa — At the Top", city: "Dubai", category: "Landmark", bestSlot: "evening",
+      note: "The world's tallest building. The sunset slot on level 124/125 is the one to book — the city lights up as you watch.",
+      kidNote: "High-speed lift and floor-to-ceiling glass — a sure hit for ages 8–11.",
+      lat: 25.1972, lng: 55.2744 },
+    { name: "Dubai Mall, Aquarium & Fountain Show", city: "Dubai", category: "Mall & Aquarium", bestSlot: "afternoon",
+      note: "The Dubai Aquarium's walk-through tunnel inside the mall, then the free Dubai Fountain show on the lake after dark.",
+      kidNote: "The aquarium tunnel and underwater zoo are built for kids.",
+      lat: 25.1985, lng: 55.2796 },
+    { name: "Desert Safari with BBQ Dinner", city: "Dubai", category: "Desert Experience", bestSlot: "evening",
+      note: "Afternoon pickup for dune bashing, camel rides and a desert camp with a BBQ buffet and live shows under the stars.",
+      kidNote: "Dune bashing is gentle on the family route; carry a light layer for after sunset.",
+      lat: 24.8000, lng: 55.5000 },
+    { name: "Marina Dhow Cruise Dinner", city: "Dubai", category: "Dinner Cruise", bestSlot: "evening",
+      note: "A traditional wooden dhow glides past the lit Marina towers over a relaxed buffet dinner.",
+      lat: 25.0772, lng: 55.1395 },
+    { name: "Dubai Frame", city: "Dubai", category: "Landmark", bestSlot: "morning",
+      note: "A 150-metre golden picture frame in Zabeel Park — glass-floor sky deck linking 'old' and 'new' Dubai.",
+      lat: 25.2353, lng: 55.3007 },
+    { name: "Museum of the Future", city: "Dubai", category: "Museum", bestSlot: "afternoon",
+      note: "Dubai's striking torus-shaped museum — immersive, interactive exhibits about the decades ahead.",
+      kidNote: "Hands-on and screen-rich — engaging for older children.",
+      lat: 25.2197, lng: 55.2820 },
+    { name: "Global Village", city: "Dubai", category: "Cultural Park", bestSlot: "evening",
+      note: "Over 90 country pavilions, street food and live shows in one open-air evening (the cool-season opens around October).",
+      lat: 25.0700, lng: 55.3050 },
+    { name: "IMG Worlds of Adventure", city: "Dubai", category: "Theme Park", bestSlot: "fullday",
+      note: "One of the world's largest indoor theme parks — fully air-conditioned, with Marvel and Cartoon Network zones.",
+      kidNote: "A full, easy day out of the heat — the family highlight for the kids.",
+      lat: 25.0700, lng: 55.4090 },
+    { name: "Palm Jumeirah & The View at The Palm", city: "Dubai", category: "Landmark", bestSlot: "afternoon",
+      note: "Ride the monorail across the man-made palm island to The View observation deck on Palm Tower.",
+      lat: 25.1124, lng: 55.1390 },
+    { name: "Atlantis Aquaventure Waterpark", city: "Dubai", category: "Water Park", bestSlot: "fullday",
+      note: "Record-breaking slides, a lazy river and a children's play area at the tip of Palm Jumeirah.",
+      kidNote: "Height-graded slides mean both children have plenty to ride.",
+      lat: 25.1304, lng: 55.1170 },
+    { name: "Gold & Spice Souks (Deira)", city: "Dubai", category: "Heritage Market", bestSlot: "morning",
+      note: "Old Dubai's lanes of gold and spice, linked by a one-rupee abra boat crossing Dubai Creek.",
+      lat: 25.2697, lng: 55.2972 },
+    { name: "JBR — The Beach", city: "Dubai", category: "Beach Promenade", bestSlot: "evening",
+      note: "An easy beachfront promenade of cafés, splash fountains and sand — a relaxed, unstructured evening.",
+      lat: 25.0785, lng: 55.1340 },
+  ],
+
+  restaurants: [
+    { name: "Maharaja Bhog", city: "Dubai", area: "Karama", cuisine: "Gujarati-Rajasthani thali", jain: true, lat: 25.2480, lng: 55.3050 },
+    { name: "Govinda's Pure Veg Restaurant", city: "Dubai", area: "Al Mankhool", cuisine: "Indian pure-veg & sattvic", jain: true, lat: 25.2530, lng: 55.2950 },
+    { name: "Saravanaa Bhavan", city: "Dubai", area: "Bur Dubai", cuisine: "South-Indian veg", jain: false, lat: 25.2540, lng: 55.2960 },
+  ],
+
+  intel: {
+    do: [
+      "Book Burj Khalifa 'At the Top' for the sunset slot online — it sells out, and walk-up tickets cost far more.",
+      "Use the Dubai Metro — cheap, fast and air-conditioned, with a station a short walk from your hotel.",
+      "Do the desert safari in the cooler evening and carry a light layer for after sunset.",
+      "Carry refillable water everywhere — December days are warm even when the evenings are pleasant.",
+    ],
+    skip: [
+      "Hailing taxis outside malls at peak hours — the Metro or a pre-booked car is faster and cheaper.",
+      "Buying gold without first checking the daily rate displayed at the Gold Souk entrance.",
+      "Over-packing each day — Dubai's sights are spread out; two big ones a day is plenty.",
+      "Unofficial 'desert safari' touts — your safari is with a licensed operator.",
+    ],
+    miss: [
+      "The Dubai Fountain show after dark — free, every 30 minutes on the lake.",
+      "An abra crossing Dubai Creek between the Gold and Spice souks — barely a rupee or two.",
+      "Global Village in the cool season — 90-plus country pavilions in a single evening.",
+      "The View at The Palm for the full sweep of Palm Jumeirah.",
+    ],
+    diet: "Bur Dubai and Karama are full of Gujarati, Jain and South-Indian restaurants — every dinner is pre-shortlisted, with pure-veg options near your hotel.",
+  },
+
+  pricing: {
+    lines: [
+      { label: "Flights — AMD↔DXB round trip (4 travellers)", amountINR: 77000 },
+      { label: "Hotel — 6 nights, JLT 4★", amountINR: 49200 },
+      { label: "UAE tourist visa — application & processing for all 4 travellers", amountINR: 26840 },
+      { label: "Airport transfers", amountINR: 7500 },
+      { label: "Tours — Burj Khalifa, desert safari, dhow cruise (4 travellers)", amountINR: 32000 },
+      { label: "Travel insurance (4 travellers)", amountINR: 3500 },
+    ],
+    servicePct: 12,
+  },
+};

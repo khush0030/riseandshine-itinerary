@@ -1,87 +1,92 @@
 "use client";
 
-import { useRef, useState } from "react";
-import Script from "next/script";
-import type { ItineraryResult, Day, TimeBlock, Place } from "@/lib/itinerary/schema";
-import { DESTINATIONS } from "@/lib/destinations";
+import { useMemo, useState } from "react";
+import type { ItineraryResult, Day, DayPart, FlightLeg, HotelInfo, Place, VisaInfo } from "@/lib/itinerary/schema";
+import { SEED, DESTINATION_LIST } from "@/lib/seed";
 
-const DESTS = [
-  ["thailand", "Thailand — Bangkok & Phuket"],
-  ["kerala", "Kerala — God's Own Country"],
-  ["mauritius", "Mauritius — Indian Ocean"],
-  ["maldives", "Maldives — Overwater"],
-  ["rajasthan", "Rajasthan — Land of Kings"],
-  ["bali", "Bali — Island of the Gods"],
-];
-const INTERESTS = ["Beach", "Sightseeing", "Shopping", "Family", "Adventure", "Wildlife", "Wellness", "Culture", "Self drive", "Night life"];
+const INTERESTS = ["Beach", "Sightseeing", "Shopping", "Family", "Adventure", "Wildlife", "Wellness", "Culture", "Temples", "Food"];
+
 const KIND_ICON: Record<string, string> = {
   travel: "✈️", transfer: "🚐", checkin: "🏨", sightseeing: "🏛️",
-  activity: "🎟️", meal: "🍽️", leisure: "🌴",
+  activity: "🎟️", leisure: "🌴", cruise: "⛵", meal: "🍽️",
 };
-const inr = (usd: number, fx: number) => "₹" + Math.round(usd * fx).toLocaleString("en-IN");
-const fmtDate = (iso: string) => {
-  if (!iso) return "";
-  const d = new Date(iso + "T00:00:00Z");
-  return d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-};
-const fmtRange = (a: string, b: string) => {
-  const da = new Date(a + "T00:00:00Z"), db = new Date(b + "T00:00:00Z");
-  const sameY = da.getUTCFullYear() === db.getUTCFullYear();
-  const left = da.toLocaleString("en-GB", { day: "numeric", month: "short", ...(sameY ? {} : { year: "numeric" }), timeZone: "UTC" });
-  const right = db.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-  return `${left} – ${right}`;
-};
+const SLOT_ICON: Record<string, string> = { Morning: "🌅", Afternoon: "☀️", Evening: "🌙" };
 
-declare global { interface Window { html2pdf: any } }
+const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+
+/** A computed client-facing quote (base + agent markup). */
+interface Quote {
+  base: number;
+  pax: number;
+  markupPct: number;
+  markupAmt: number;
+  total: number;
+  perPerson: number;
+}
+
+/** Locked-scenario summary, derived client-side from the seed. */
+function scenarioOf(key: string) {
+  const s = SEED[key] ?? SEED.thailand;
+  const start = new Date(s.startDate + "T00:00:00Z");
+  const end = new Date(s.startDate + "T00:00:00Z");
+  end.setUTCDate(end.getUTCDate() + s.nights);
+  const f = (d: Date) => d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const pax = s.pax.adults + s.pax.children + s.pax.infants;
+  return {
+    nights: s.nights,
+    days: s.nights + 1,
+    dateRange: `${f(start)} – ${f(end)}`,
+    pax,
+    group: `${s.pax.adults} adults · ${s.pax.children} children`,
+    route: s.cities.map((c) => c.name).join(" → "),
+  };
+}
 
 export default function Page() {
   const [f, setF] = useState({
-    clientName: "Rajesh Sharma", clientPhone: "+91 98250 11111", email: "",
-    destinationKey: "thailand", durationNights: 7, budgetTier: 4,
-    startDate: "2026-06-15",
-    adults: 2, children: 2, infants: 0,
+    clientName: "Rajesh Shah",
+    clientPhone: "+91 98250 11111",
+    email: "",
+    destinationKey: "thailand",
     diet: "veg",
-    travelStyle: "balanced", groupType: "family",
-    visaNeeded: true, flightAssist: false, hotelAssist: false,
+    groupType: "family",
+    specialRequests: "",
   });
-  const [interests, setInterests] = useState<string[]>(["Beach", "Family"]);
-  const [scope, setScope] = useState<"domestic" | "international">("international");
+  const [interests, setInterests] = useState<string[]>(["Family", "Beach", "Sightseeing"]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [errToggle, setErrToggle] = useState<"flights" | "hotels" | null>(null);
   const [result, setResult] = useState<ItineraryResult | null>(null);
-  const [editedDays, setEditedDays] = useState<Day[] | null>(null);
-  const [editMode, setEditMode] = useState(false);
-  const docRef = useRef<HTMLDivElement>(null);
+  const [markupStr, setMarkupStr] = useState("12");
 
   const up = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
+  const scenario = useMemo(() => scenarioOf(f.destinationKey), [f.destinationKey]);
+
+  // ── Agent markup (client-side only — never sent to the API or the PDF) ──
+  const markupPct = Math.max(0, parseFloat(markupStr) || 0);
+  const quote: Quote | null = useMemo(() => {
+    if (!result) return null;
+    const base = result.pricing.totalINR;
+    const pax = result.pricing.pax || 1;
+    const markupAmt = Math.round(base * markupPct / 100);
+    const total = base + markupAmt;
+    return { base, pax, markupPct, markupAmt, total, perPerson: Math.round(total / pax) };
+  }, [result, markupPct]);
 
   async function generate() {
-    setErr(null); setErrToggle(null); setLoading(true); setResult(null);
-    setEditedDays(null); setEditMode(false);
+    setErr(null); setLoading(true); setResult(null); setMarkupStr("12");
     try {
       const { email, ...rest } = f;
       const r = await fetch("/api/itinerary", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...rest,
           ...(email && email.trim() ? { email: email.trim() } : {}),
-          durationNights: Number(f.durationNights),
-          budgetTier: Number(f.budgetTier),
-          adults: Number(f.adults),
-          children: Number(f.children),
-          infants: Number(f.infants),
           interests,
         }),
       });
       const j = await r.json();
-      if (!r.ok) {
-        if (j?.error === "live_provider_unavailable" && (j.which === "flights" || j.which === "hotels")) {
-          setErrToggle(j.which);
-          throw new Error(`Live ${j.which} provider not configured — see Setup.`);
-        }
-        throw new Error(j.detail || j.error || "Failed");
-      }
+      if (!r.ok) throw new Error(j.detail || j.error || "Failed to build itinerary");
       setResult(j as ItineraryResult);
     } catch (e: any) {
       setErr(e.message || "Something went wrong");
@@ -90,29 +95,31 @@ export default function Page() {
     }
   }
 
+  // Native browser print → "Save as PDF". Real pagination, real images,
+  // crisp vector text. The @media print stylesheet hides the app chrome and
+  // the markup panel so only the client brochure (.doc) is printed.
   function downloadPDF() {
-    if (!docRef.current || !window.html2pdf) return;
-    window.html2pdf().set({
-      margin: 0,
-      filename: `RiseAndShine_${result?.meta.destinationName}_${f.clientName}`.replace(/\s+/g, "_") + ".pdf",
-      image: { type: "jpeg", quality: 0.96 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["css", "avoid-all"] },
-    }).from(docRef.current).save();
+    if (!result) return;
+    const prev = document.title;
+    document.title = `RiseAndShine_${result.meta.destinationName}_${f.clientName}`.replace(/\s+/g, "_");
+    const restore = () => {
+      document.title = prev;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    window.print();
   }
 
   function whatsapp() {
-    if (!result) return;
+    if (!result || !quote) return;
     let n = f.clientPhone.replace(/\D/g, "");
     if (n.length === 10) n = "91" + n;
-    const msg = `Dear ${f.clientName.split(" ")[0]}, your customised ${result.meta.destinationName} itinerary from Rise & Shine Travel.`;
+    const msg = `Dear ${f.clientName.split(" ")[0]}, here is your customised ${result.meta.destinationName} itinerary from Rise & Shine Travel — ${result.meta.dateRangeLabel}, ${inr(quote.perPerson)} per person.`;
     window.open(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
   }
 
   return (
     <>
-      <Script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" strategy="lazyOnload" />
       <header className="topbar">
         <a className="logo" href="https://www.riseandshinetravel.com/" target="_blank" rel="noopener noreferrer">
           <img className="brand-img" src="/assets/logo.png" alt="Rise & Shine Travel" />
@@ -124,10 +131,10 @@ export default function Page() {
         <div className="topdiv" />
         <div className="toptitle">
           <b>AI Itinerary Generator</b>
-          <span>Live tool · v2.0 · IATTE member</span>
+          <span>Client-ready itineraries · v3.0</span>
         </div>
         <div className="topright">
-          <div className="livebadge"><span className="dot" />LIVE</div>
+          <div className="certbadge">IATTE · ADTOI · Gujarat Tourism</div>
         </div>
       </header>
 
@@ -138,147 +145,82 @@ export default function Page() {
               <div className="eyebrow">Build a trip</div>
               <h2>Plan the journey</h2>
             </div>
-            <p>Fill the brief — branded, hour-by-hour plan from live data.</p>
+            <p>Fill the client brief — a branded, client-ready itinerary in seconds.</p>
           </div>
+
           <div className="formbody">
-          <div className="formcols">
-          <div className="formcol">
-          <div className="section-title"><span className="st-ic">👤</span>Client</div>
-          <div className="fg"><label>Client name</label>
-            <input value={f.clientName} onChange={(e) => up("clientName", e.target.value)} /></div>
-          <div className="fg"><label>Contact (WhatsApp)</label>
-            <input value={f.clientPhone} onChange={(e) => up("clientPhone", e.target.value)} /></div>
-          <div className="fg"><label>Email <span style={{ color: "var(--ink-faint)", fontWeight: 500 }}>(optional)</span></label>
-            <input type="email" placeholder="client@example.com" value={f.email}
-              onChange={(e) => up("email", e.target.value)} /></div>
-          </div>
-
-          <div className="formcol">
-          <div className="section-title"><span className="st-ic">📍</span>Trip</div>
-          <div className="fg"><label>Destination scope</label>
-            <div className="scope-pill">
-              <button type="button" aria-pressed={scope === "domestic"}
-                onClick={() => {
-                  setScope("domestic");
-                  const first = DESTS.find(([k]) => DESTINATIONS[k as string]?.international === false);
-                  if (first && f.destinationKey !== first[0]) up("destinationKey", first[0]);
-                }}>🇮🇳 Domestic</button>
-              <button type="button" aria-pressed={scope === "international"}
-                onClick={() => {
-                  setScope("international");
-                  const first = DESTS.find(([k]) => DESTINATIONS[k as string]?.international === true);
-                  if (first && f.destinationKey !== first[0]) up("destinationKey", first[0]);
-                }}>✈️ International</button>
-            </div></div>
-          <div className="fg"><label>Destination</label>
-            <select value={f.destinationKey} onChange={(e) => up("destinationKey", e.target.value)}>
-              {DESTS
-                .filter(([k]) => DESTINATIONS[k as string]?.international === (scope === "international"))
-                .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select></div>
-          <div className="row2">
-            <div className="fg"><label>Nights</label>
-              <input type="number" min={2} max={20} value={f.durationNights}
-                onChange={(e) => up("durationNights", e.target.value)} /></div>
-            <div className="fg"><label>Budget tier</label>
-              <select value={f.budgetTier} onChange={(e) => up("budgetTier", e.target.value)}>
-                <option value={3}>Budget (3★)</option>
-                <option value={4}>Mid-range (4★)</option>
-                <option value={5}>Luxury (5★)</option>
-              </select></div>
-          </div>
-          <div className="fg"><label>Travel date</label>
-            <input type="date" value={f.startDate} onChange={(e) => up("startDate", e.target.value)} /></div>
-          </div>
-
-          <div className="formcol">
-          <div className="section-title"><span className="st-ic">👥</span>Group &amp; preferences</div>
-          <div className="row2">
-            <div className="fg"><label>Adults</label>
-              <input type="number" min={1} max={20} value={f.adults}
-                onChange={(e) => up("adults", e.target.value)} /></div>
-            <div className="fg"><label>Children (6–11 yrs)</label>
-              <input type="number" min={0} max={10} value={f.children}
-                onChange={(e) => up("children", e.target.value)} /></div>
-          </div>
-          <div className="fg"><label>Infants (0–5 yrs)</label>
-            <input type="number" min={0} max={6} value={f.infants}
-              onChange={(e) => up("infants", e.target.value)} /></div>
-          <div className="fg"><label>Dietary preference</label>
-            <select value={f.diet} onChange={(e) => up("diet", e.target.value)}>
-              <option value="veg">Vegetarian</option>
-              <option value="jain">Jain</option>
-              <option value="non-veg">Non-Vegetarian</option>
-              <option value="mixed">Mixed</option>
-            </select></div>
-          <div className="row2">
-            <div className="fg"><label>Travel style</label>
-              <select title="Travel style" value={f.travelStyle} onChange={(e) => up("travelStyle", e.target.value)}>
-                <option value="touristy">Touristy — famous icons</option>
-                <option value="balanced">Balanced — mix</option>
-                <option value="offbeat">Off-beat — skip the crush</option>
-              </select></div>
-            <div className="fg"><label>Traveller profile</label>
-              <select title="Traveller profile" value={f.groupType} onChange={(e) => {
-                const v = e.target.value as "family" | "solo" | "honeymoon" | "bikers";
-                setF((s) => ({
-                  ...s,
-                  groupType: v,
-                  ...(v === "honeymoon" ? { adults: 2 } : {}),
-                  ...(v === "solo"      ? { adults: 1 } : {}),
-                }));
-              }}>
-                <option value="family">Family</option>
-                <option value="solo">Solo traveller</option>
-                <option value="honeymoon">Honeymoon</option>
-                <option value="bikers">Bike riders</option>
-              </select></div>
-          </div>
-          <div className="fg"><label>Interests</label>
-            <div className="chips">
-              {INTERESTS.map((i) => (
-                <span key={i} className={"chip" + (interests.includes(i) ? " on" : "")}
-                  onClick={() => setInterests((s) => s.includes(i) ? s.filter((x) => x !== i) : [...s, i])}>{i}</span>
-              ))}
-            </div></div>
-          </div>
-          </div>
-
-          <div className="formfoot">
-            <div className="ff-assist">
-              <div className="section-title section-title-inline"><span className="st-ic">🎫</span>Booking assistance</div>
-              <div className="toggle-row">
-                <button type="button"
-                  className={"butter-toggle" + (errToggle === "flights" ? " warn" : "")}
-                  aria-pressed={f.flightAssist}
-                  onClick={() => up("flightAssist", !f.flightAssist)}>
-                  <span className="dot" />✈️ Flight assistance
-                </button>
-                <button type="button"
-                  className={"butter-toggle" + (errToggle === "hotels" ? " warn" : "")}
-                  aria-pressed={f.hotelAssist}
-                  onClick={() => up("hotelAssist", !f.hotelAssist)}>
-                  <span className="dot" />🏨 Hotel assistance
-                </button>
-                <button type="button"
-                  className="butter-toggle"
-                  aria-pressed={f.visaNeeded}
-                  onClick={() => up("visaNeeded", !f.visaNeeded)}>
-                  <span className="dot" />🛂 Visa assistance
-                </button>
+            <div className="formcols">
+              <div className="formcol">
+                <div className="section-title"><span className="st-ic">👤</span>Client</div>
+                <div className="fg"><label>Client name</label>
+                  <input value={f.clientName} onChange={(e) => up("clientName", e.target.value)} /></div>
+                <div className="fg"><label>Contact (WhatsApp)</label>
+                  <input value={f.clientPhone} onChange={(e) => up("clientPhone", e.target.value)} /></div>
+                <div className="fg"><label>Email <span className="opt-lbl">(optional)</span></label>
+                  <input type="email" placeholder="client@example.com" value={f.email}
+                    onChange={(e) => up("email", e.target.value)} /></div>
               </div>
-              <p className="hint">Flight / Hotel ON = live options (cheapest + 4 alternatives) from Amadeus.</p>
+
+              <div className="formcol">
+                <div className="section-title"><span className="st-ic">📍</span>Destination</div>
+                <div className="fg"><label>Package</label>
+                  <select value={f.destinationKey} onChange={(e) => up("destinationKey", e.target.value)}>
+                    {DESTINATION_LIST.map((d) => (
+                      <option key={d.key} value={d.key}>{d.flag} {d.title}</option>
+                    ))}
+                  </select></div>
+                <div className="scenario">
+                  <div className="sc-row"><span>Route</span><b>{scenario.route}</b></div>
+                  <div className="sc-row"><span>Duration</span><b>{scenario.nights} nights / {scenario.days} days</b></div>
+                  <div className="sc-row"><span>Travel dates</span><b>{scenario.dateRange}</b></div>
+                  <div className="sc-row"><span>Travellers</span><b>{scenario.group}</b></div>
+                  <div className="sc-row"><span>Departing</span><b>Ahmedabad (AMD)</b></div>
+                </div>
+              </div>
+
+              <div className="formcol">
+                <div className="section-title"><span className="st-ic">🧭</span>Preferences</div>
+                <div className="row2">
+                  <div className="fg"><label>Dietary preference</label>
+                    <select value={f.diet} onChange={(e) => up("diet", e.target.value)}>
+                      <option value="veg">Vegetarian</option>
+                      <option value="jain">Jain</option>
+                      <option value="non-veg">Non-Vegetarian</option>
+                      <option value="mixed">Mixed</option>
+                    </select></div>
+                  <div className="fg"><label>Traveller profile</label>
+                    <select value={f.groupType} onChange={(e) => up("groupType", e.target.value)}>
+                      <option value="family">Family</option>
+                      <option value="honeymoon">Honeymoon</option>
+                      <option value="solo">Solo traveller</option>
+                      <option value="bikers">Bike riders</option>
+                    </select></div>
+                </div>
+                <div className="fg"><label>Interests</label>
+                  <div className="chips">
+                    {INTERESTS.map((i) => (
+                      <span key={i} className={"chip" + (interests.includes(i) ? " on" : "")}
+                        onClick={() => setInterests((s) => s.includes(i) ? s.filter((x) => x !== i) : [...s, i])}>{i}</span>
+                    ))}
+                  </div></div>
+                <div className="fg"><label>Special requests / notes <span className="opt-lbl">(optional)</span></label>
+                  <textarea rows={3} maxLength={600}
+                    placeholder="e.g. Anniversary trip — surprise element. Client's mother is 68, needs an easy walking pace. Kids nervous around water."
+                    value={f.specialRequests} onChange={(e) => up("specialRequests", e.target.value)} /></div>
+              </div>
             </div>
-            <div className="ff-cta">
-              <button className="btn btn-primary" disabled={loading} onClick={generate}>
-                {loading
-                  ? <><span className="spin" />&nbsp;Building live itinerary…</>
-                  : <><svg className="cta-ic" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18l-2.2-5.8L3.5 10l6.3-1.7z"/></svg>Generate Live Itinerary</>}
-              </button>
-              <div className="gennote">Live flights, hotels &amp; places · ~20 seconds</div>
-              {err && <p style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>⚠ {err}</p>}
+
+            <div className="formfoot">
+              <div className="ff-cta">
+                <button className="btn btn-primary" disabled={loading} onClick={generate}>
+                  {loading
+                    ? <><span className="spin" />&nbsp;Building itinerary…</>
+                    : <><svg className="cta-ic" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18l-2.2-5.8L3.5 10l6.3-1.7z" /></svg>Generate Itinerary</>}
+                </button>
+                <div className="gennote">Branded · client-ready · about a minute</div>
+                {err && <p className="err">⚠ {err}</p>}
+              </div>
             </div>
-          </div>
           </div>
         </aside>
 
@@ -286,127 +228,333 @@ export default function Page() {
           {!result && !loading && (
             <div className="empty">
               <div className="ic">🗺️</div>
-              <h2 style={{ color: "var(--ink)", marginBottom: 6 }}>No itinerary yet</h2>
-              <p style={{ maxWidth: 440 }}>Fill the client details and hit <b>Generate</b>. A branded, hour-by-hour
-                plan built from live flights, hotels, places & traveller intel appears here.</p>
+              <h2>No itinerary yet</h2>
+              <p>Pick a package, fill the client brief and hit <b>Generate</b>. A branded, client-ready
+                itinerary — with a real visa section, transparent pricing and a day-by-day plan — appears here.</p>
             </div>
           )}
           {loading && (
             <div className="empty">
               <div className="ic"><span className="spin" /></div>
-              <h2 style={{ color: "var(--ink)", marginBottom: 6 }}>Compiling live itinerary…</h2>
-              <p style={{ maxWidth: 440 }}>Fetching flights (Amadeus), hotels, attractions & restaurants
-                (Google Places), traveller intel (Reddit), composing the hour-by-hour plan (Claude).</p>
+              <h2>Building the itinerary…</h2>
+              <p>Composing the day-by-day plan. About a minute.</p>
             </div>
           )}
-          {result && <Itinerary
-            r={result}
-            days={editedDays ?? result.days}
-            editMode={editMode}
-            onEditToggle={() => {
-              if (!editMode && !editedDays) setEditedDays(result.days);
-              setEditMode((v) => !v);
-            }}
-            onReset={() => { setEditedDays(null); setEditMode(false); }}
-            setDays={(d) => setEditedDays(d)}
-            docRef={docRef} onPDF={downloadPDF} onWA={whatsapp} />}
+          {result && quote && (
+            <Itinerary
+              r={result} quote={quote}
+              markupStr={markupStr} onMarkup={setMarkupStr}
+              onPDF={downloadPDF} onWA={whatsapp} />
+          )}
         </main>
       </div>
     </>
   );
 }
 
-function Fresh({ s }: { s: "live" | "sample" | "indicative" }) {
-  // User-facing: no "sample" / "API key" language. Live = neutral green tick.
-  // Indicative/sample = no badge at all (data still shown, just unlabelled).
-  if (s === "live") return <span className="live"><span className="dot" />Verified</span>;
-  return null;
+/* ════════════════════════ BROCHURE ════════════════════════ */
+
+function Stars({ n }: { n: number }) {
+  return <span className="stars">{"★".repeat(n)}{"☆".repeat(Math.max(0, 5 - n))}</span>;
 }
 
-function PlaceChip({ p }: { p: Place }) {
+function PageHead({ section }: { section: string }) {
   return (
-    <a className="placechip" href={p.mapsUrl} target="_blank" rel="noopener">
-      {p.photoUrl ? <img src={p.photoUrl} alt={p.name} /> : <div className="placechip" style={{ width: 54, height: 54, padding: 0, justifyContent: "center" }}>📍</div>}
-      <div>
-        <div className="pn">{p.name}</div>
-        <div className="pm">{p.category}{p.rating ? ` · ★ ${p.rating}` : ""}{p.tag ? ` · ${p.tag}` : ""}</div>
-      </div>
-    </a>
+    <div className="ph">
+      <div className="l"><img src="/assets/logo.png" alt="" />Rise &amp; Shine Travel</div>
+      <div className="pn">{section}</div>
+    </div>
   );
 }
 
-function Block({ b }: { b: TimeBlock }) {
-  const isSight = b.kind === "sightseeing" || b.kind === "activity";
-  const hero = isSight && b.place?.photoUrl ? b.place.photoUrl : null;
+function Itinerary({ r, quote, markupStr, onMarkup, onPDF, onWA }: {
+  r: ItineraryResult;
+  quote: Quote;
+  markupStr: string;
+  onMarkup: (v: string) => void;
+  onPDF: () => void; onWA: () => void;
+}) {
+  const visaPhrase =
+    r.visa.status === "free" ? "Visa-free — TDAC handled by us"
+    : r.visa.status === "required" ? "Visa included in package"
+    : "No visa required";
+
   return (
-    <div className={"blk" + (hero ? " has-hero" : "")}>
-      <div className="btime">{b.start}<br />–<br />{b.end}</div>
-      <div className="brail"><div className="bicon">{KIND_ICON[b.kind] ?? "•"}</div><div className="bline" /></div>
-      <div className="bbody">
-        {hero && (
-          <a className="bhero" href={b.place!.mapsUrl} target="_blank" rel="noopener">
-            <img src={hero} alt={b.place!.name} loading="lazy" />
-            <div className="bhero-tag">
-              {b.place!.rating ? `★ ${b.place!.rating}` : "📍"} {b.place!.category}
-            </div>
-          </a>
-        )}
-        <div className="btitle">{b.title}{b.kind === "meal" && <span className="kpill">choose 1</span>}</div>
-        <div className="bdetail">{b.detail}</div>
-        {b.place && !hero && <PlaceChip p={b.place} />}
-        {b.options?.length > 0 && (
-          <div className="opts">
-            {b.options.map((o, i) => (
-              <a key={i} className="opt" href={o.mapsUrl} target="_blank" rel="noopener">
-                {o.photoUrl
-                  ? <img src={o.photoUrl} alt={o.name} loading="lazy" />
-                  : <div className="opt-fallback">🍽️</div>}
-                <div><div className="on">{o.name}</div>
-                  <div className="om">{o.vegFriendly ? "veg-friendly" : o.category}{o.rating ? ` · ★ ${o.rating}` : ""}</div></div>
-              </a>
-            ))}
+    <>
+      <div className="toolbar">
+        <div>
+          <div className="tb-title">{r.meta.flag} {r.meta.title}</div>
+          <div className="tb-sub">{r.meta.dateRangeLabel} · {r.meta.groupLabel} · {inr(quote.perPerson)} per person</div>
+        </div>
+        <div className="acts">
+          <button type="button" className="ba" onClick={onWA}>📱 Send on WhatsApp</button>
+          <button type="button" className="ba dl" onClick={onPDF}>⬇ Download Client PDF</button>
+        </div>
+      </div>
+
+      {/* ── INTERNAL agent control — hidden in @media print, never in the PDF ── */}
+      <MarkupPanel quote={quote} markupStr={markupStr} onMarkup={onMarkup} onDownload={onPDF} />
+
+      <div className="doc">
+        {/* ── Cover ── */}
+        <div className="cover">
+          <div className="bc">
+            <div className="brand-logo-chip"><img src="/assets/logo.png" alt="Rise & Shine" /></div>
+            <div><h3>Rise &amp; Shine Travel</h3><p>Ahmedabad · IATTE · BNI · ADTOI · Gujarat Tourism</p></div>
           </div>
-        )}
+          <div className="tag">Customised Itinerary · Prepared for {r.meta.clientName}</div>
+          <h1>{r.meta.flag} {r.meta.title}</h1>
+          <div className="sub">{r.meta.tagline}</div>
+          <div className="grid">
+            <div className="gi"><div className="l">Travel dates</div><div className="v">{r.meta.dateRangeLabel}</div></div>
+            <div className="gi"><div className="l">Duration</div><div className="v">{r.meta.nights}N / {r.meta.days}D</div></div>
+            <div className="gi"><div className="l">Travellers</div><div className="v">{r.meta.groupLabel}</div></div>
+            <div className="gi"><div className="l">Per person</div><div className="v">{inr(quote.perPerson)}</div></div>
+          </div>
+        </div>
+
+        {/* ── Pricing — client sees ONLY the final quote, never the base or markup ── */}
+        <div className="page">
+          <PageHead section="Package Price" />
+          <div className="h2">Indicative Package Price</div>
+          <div className="subm">Everything below is included in your package — one transparent price.</div>
+          <div className="incl">
+            {r.pricing.lines.map((l, i) => (
+              <div className="incl-item" key={i}><span className="tick">✓</span>{l.label}</div>
+            ))}
+            <div className="incl-item"><span className="tick">✓</span>Rise &amp; Shine planning &amp; on-trip support</div>
+          </div>
+          <div className="pricebox">
+            <div className="pb-row">
+              <div className="pb-l">Total package · {quote.pax} travellers</div>
+              <div className="pb-a">{inr(quote.total)}</div>
+            </div>
+            <div className="pb-div" />
+            <div className="pb-row">
+              <div className="pb-l">Per person · {quote.pax} sharing</div>
+              <div className="pb-a pp">{inr(quote.perPerson)}</div>
+            </div>
+          </div>
+          <div className="banner">
+            Approx. {inr(quote.perPerson)} per person · {quote.pax} sharing · {visaPhrase} ·
+            All prices indicative — confirmed exactly on the booking call · Subject to availability.
+          </div>
+        </div>
+
+        {/* ── Visa ── */}
+        <VisaSection v={r.visa} />
+
+        {/* ── Flights ── */}
+        <div className="page">
+          <PageHead section="Flights" />
+          <div className="h2">Your Flights · from {r.meta.originCity}</div>
+          <div className="subm">{r.flights.note}</div>
+          {r.flights.legs.map((l, i) => <FlightCard key={i} l={l} />)}
+        </div>
+
+        {/* ── Hotels ── */}
+        <div className="page">
+          <PageHead section="Your Stay" />
+          <div className="h2">Where You Stay</div>
+          <div className="subm">Hand-picked 4★ stays — each one chosen, not auto-listed.</div>
+          {r.hotels.map((h, i) => <HotelCard key={i} h={h} />)}
+        </div>
+
+        {/* ── Day by day ── */}
+        <div className="page">
+          <PageHead section="Day-by-Day Plan" />
+          <div className="h2">Your Day-by-Day Journey</div>
+          <div className="subm">A clear morning / afternoon / evening plan — built around your family's pace.</div>
+          {r.days.map((d) => <DayCard key={d.dayIndex} d={d} />)}
+        </div>
+
+        {/* ── Intel ── */}
+        <div className="page">
+          <PageHead section="Traveller Intel" />
+          <div className="h2">Local Know-How</div>
+          <div className="subm">The things a good agent tells you — what to do, what to skip, what not to miss.</div>
+          <div className="intel">
+            <div className="ic do"><h4>✅ Do</h4><ul>{r.intel.do.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+            <div className="ic sk"><h4>⛔ Skip</h4><ul>{r.intel.skip.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+            <div className="ic ms"><h4>⭐ Don&apos;t miss</h4><ul>{r.intel.miss.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+          </div>
+          <div className="idiet">🍃 <b>Matched to your {r.meta.dietLabel.toLowerCase()} preference:</b> {r.intel.diet}</div>
+        </div>
+
+        <div className="foot">
+          <div><span className="iata">IATTE</span> Rise &amp; Shine Travel · Ahmedabad</div>
+          <div>+91-79-2329 7232 · info@riseandshinetravel.com</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Internal-only markup tool. Lives OUTSIDE the PDF capture region. */
+function MarkupPanel({ quote, markupStr, onMarkup, onDownload }: {
+  quote: Quote; markupStr: string; onMarkup: (v: string) => void; onDownload: () => void;
+}) {
+  return (
+    <div className="markup-panel">
+      <div className="mk-head">
+        <div className="mk-title">🔒 Agent Markup</div>
+        <div className="mk-internal">Internal · never shown to the client</div>
+      </div>
+      <div className="mk-grid">
+        <div className="mk-calc">
+          <div className="mk-row">
+            <span className="mk-l">Base package cost</span>
+            <span className="mk-v">{inr(quote.base)}</span>
+          </div>
+          <div className="mk-row">
+            <span className="mk-l">Your markup</span>
+            <span className="mk-input">
+              <input type="number" min={0} step={0.5} value={markupStr}
+                onChange={(e) => onMarkup(e.target.value)} />
+              <span className="mk-pct">%</span>
+            </span>
+          </div>
+          <div className="mk-row">
+            <span className="mk-l">Markup amount</span>
+            <span className="mk-v gold">+ {inr(quote.markupAmt)}</span>
+          </div>
+        </div>
+        <div className="mk-quote">
+          <div className="mk-q-eyebrow">Final client quote</div>
+          <div className="mk-q-total">{inr(quote.total)}</div>
+          <div className="mk-q-pp">{inr(quote.perPerson)} per person · {quote.pax} sharing</div>
+          <div className="mk-q-margin">
+            <span>Your margin on this trip</span>
+            <b>{inr(quote.markupAmt)}</b>
+          </div>
+        </div>
+      </div>
+      <div className="mk-footbar">
+        <button type="button" className="mk-btn" onClick={onDownload}>
+          ⬇ Apply &amp; Download Client PDF
+        </button>
+        <div className="mk-foot">The client PDF carries only the final quote — base cost and markup never leave this panel.</div>
       </div>
     </div>
   );
 }
 
-function DayCard({ d, editMode, onChange }: { d: Day; editMode: boolean; onChange: (nd: Day) => void }) {
-  const setBlock = (i: number, nb: TimeBlock) =>
-    onChange({ ...d, blocks: d.blocks.map((x, j) => (j === i ? nb : x)) });
-  const delBlock = (i: number) =>
-    onChange({ ...d, blocks: d.blocks.filter((_, j) => j !== i) });
-  const addBlock = () =>
-    onChange({
-      ...d,
-      blocks: [...d.blocks, {
-        start: "12:00", end: "13:00", kind: "leisure",
-        title: "New block", detail: "Describe this slot.", place: null, options: [],
-      }],
-    });
+function VisaSection({ v }: { v: VisaInfo }) {
+  const tone = v.status === "free" ? "ok" : v.status === "required" ? "warn" : "neutral";
+  return (
+    <div className="page">
+      <PageHead section="Visa & Entry" />
+      <div className="h2">Visa &amp; Entry Requirements</div>
+      <div className={"visa-status " + tone}>
+        <span className="vs-badge">{v.statusLabel}</span>
+        <span className="vs-type">{v.type}</span>
+      </div>
+      <div className="visa-grid">
+        <div className="vg"><div className="l">Visa fee</div><div className="v">{v.feeLabel}</div></div>
+        <div className="vg"><div className="l">Stay permitted</div><div className="v">{v.stay}</div></div>
+        <div className="vg"><div className="l">Processing time</div><div className="v">{v.processing}</div></div>
+      </div>
+
+      {v.mandatory && (
+        <div className="visa-mandatory">
+          <div className="vm-h">⚠ Mandatory — {v.mandatory.title}</div>
+          <p>{v.mandatory.detail}</p>
+        </div>
+      )}
+
+      <div className="visa-cols">
+        <div className="vc">
+          <div className="vc-h">📋 Documents to carry</div>
+          <ul>{v.documents.map((d, i) => <li key={i}>{d}</li>)}</ul>
+        </div>
+        <div className="vc handles">
+          <div className="vc-h">🤝 Rise &amp; Shine handles this</div>
+          <ul>{v.riseShineHandles.map((d, i) => <li key={i}>{d}</li>)}</ul>
+        </div>
+      </div>
+      {v.note && <div className="visa-note">{v.note}</div>}
+    </div>
+  );
+}
+
+function FlightCard({ l }: { l: FlightLeg }) {
+  return (
+    <div className="fleg-card">
+      <div className="fl-head">
+        <span className="fl-label">{l.label}</span>
+        <span className="fl-airline">{l.airline} · {l.flightNo}</span>
+        <span className="fl-date">{l.dateLabel}</span>
+      </div>
+      <div className="fl-route">
+        <div className="fl-end">
+          <div className="fl-code">{l.fromCode}</div>
+          <div className="fl-time">{l.depTime}</div>
+          <div className="fl-city">{l.fromCity}</div>
+        </div>
+        <div className="fl-mid">
+          <div className="fl-dur">{l.duration}</div>
+          <div className="fl-line"><span /></div>
+          <div className="fl-stops">{l.stops}</div>
+        </div>
+        <div className="fl-end r">
+          <div className="fl-code">{l.toCode}</div>
+          <div className="fl-time">{l.arrTime}</div>
+          <div className="fl-city">{l.toCity}</div>
+        </div>
+      </div>
+      <div className="fl-meta">{l.cabin} · Baggage {l.baggage}</div>
+    </div>
+  );
+}
+
+function HotelCard({ h }: { h: HotelInfo }) {
+  return (
+    <div className="hcard">
+      <iframe className="map" loading="lazy"
+        src={`https://www.google.com/maps?q=${h.lat},${h.lng}&z=14&output=embed`} title={h.name} />
+      <div className="bd">
+        <div className="h-top">
+          <div>
+            <div className="nm">{h.name}</div>
+            <div className="ar">{h.area}</div>
+          </div>
+          <span className={"h-kind" + (h.kind === "houseboat" ? " boat" : "")}>
+            {h.kind === "houseboat" ? "⛵ Houseboat" : "🏨 Hotel"}
+          </span>
+        </div>
+        <div className="h-line"><Stars n={h.stars} /><span className="h-nights">{h.dateLabel} · {h.nights} night{h.nights > 1 ? "s" : ""}</span></div>
+        <p className="h-why">{h.why}</p>
+        <div className="h-amen">{h.amenities.map((a, i) => <span key={i} className="amen">{a}</span>)}</div>
+        <a className="lnk" href={`https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}`}
+          target="_blank" rel="noopener">📍 View location</a>
+      </div>
+    </div>
+  );
+}
+
+function DayCard({ d }: { d: Day }) {
   return (
     <div className="day">
       <div className="dhead">
-        <div>
+        <div className="dh-left">
           <span className="dn">DAY {d.dayIndex + 1}</span>
-          {editMode
-            ? <input className="edit-input headline" value={d.headline}
-                onChange={(e) => onChange({ ...d, headline: e.target.value })} />
-            : <span className="dt">{d.headline}</span>}
+          <span className="dt">{d.headline}</span>
         </div>
-        <div className="dd">{d.weekday}, {d.date} · {d.cityLabel}</div>
+        <div className="dd">{d.weekday}, {d.dateLabel} · {d.cityLabel}</div>
       </div>
-      {d.efficiency && <div className="effic">🧭 <b>Travel-efficient:</b> {d.efficiency}</div>}
-      <div className="tl">
-        {d.blocks.map((b, i) => editMode
-          ? <BlockEdit key={i} b={b} onChange={(nb) => setBlock(i, nb)} onDelete={() => delBlock(i)} />
-          : <Block key={i} b={b} />)}
-        {editMode && (
-          <button type="button" className="ba add-block" onClick={addBlock}>+ Add block</button>
-        )}
+      {d.efficiency && <div className="effic">🧭 <b>Travel-smart:</b> {d.efficiency}</div>}
+      <div className="dparts">
+        {d.parts.map((p, i) => <PartRow key={i} p={p} />)}
       </div>
-      {d.skip?.length > 0 && (
+      {d.dining.length > 0 && (
+        <div className="ddining">
+          <div className="dd-h">🍽️ Dining today · diet-matched, choose one</div>
+          <div className="dd-opts">
+            {d.dining.map((p, i) => <DiningChip key={i} p={p} />)}
+          </div>
+        </div>
+      )}
+      {d.skip.length > 0 && (
         <div className="skip">
           <div className="sl">⛔ Skip today</div>
           <ul>{d.skip.map((s, i) => <li key={i}>{s}</li>)}</ul>
@@ -416,234 +564,46 @@ function DayCard({ d, editMode, onChange }: { d: Day; editMode: boolean; onChang
   );
 }
 
-function BlockEdit({ b, onChange, onDelete }: {
-  b: TimeBlock; onChange: (nb: TimeBlock) => void; onDelete: () => void;
-}) {
+function PartRow({ p }: { p: DayPart }) {
+  const hero = p.place?.photoUrl ?? null;
   return (
-    <div className="blk edit">
-      <div className="btime">
-        <input className="edit-input time" type="time" value={b.start}
-          onChange={(e) => onChange({ ...b, start: e.target.value })} />
-        <input className="edit-input time" type="time" value={b.end}
-          onChange={(e) => onChange({ ...b, end: e.target.value })} />
+    <div className={"dpart" + (hero ? " has-hero" : "")}>
+      <div className="dp-slot">
+        <span className="dp-sic">{SLOT_ICON[p.slot]}</span>
+        <span className="dp-sl">{p.slot}</span>
       </div>
-      <div className="brail"><div className="bicon">{KIND_ICON[b.kind] ?? "•"}</div><div className="bline" /></div>
-      <div className="bbody">
-        <div className="be-row">
-          <input className="edit-input title" value={b.title}
-            onChange={(e) => onChange({ ...b, title: e.target.value })} />
-          <button type="button" className="del-btn" onClick={onDelete} aria-label="Remove block">×</button>
+      <div className="dp-body">
+        {hero && (
+          <a className="dp-hero" href={p.place!.mapsUrl} target="_blank" rel="noopener">
+            <img src={hero} alt={p.place!.name} loading="lazy" />
+            {p.place!.rating != null && <span className="dp-rate">★ {p.place!.rating.toFixed(1)}</span>}
+          </a>
+        )}
+        <div className="dp-title">
+          <span className="dp-kic">{KIND_ICON[p.kind] ?? "•"}</span>
+          {p.title}
         </div>
-        <textarea className="edit-input detail" rows={2} value={b.detail}
-          onChange={(e) => onChange({ ...b, detail: e.target.value })} />
-        {b.place && <PlaceChip p={b.place} />}
-        {b.options?.length > 0 && (
-          <div className="opts">
-            {b.options.map((o, i) => (
-              <button type="button" key={i} className="opt as-btn"
-                onClick={() => {
-                  // Move clicked option to position 0 (primary).
-                  const reordered = [o, ...b.options.filter((_, j) => j !== i)];
-                  onChange({ ...b, options: reordered });
-                }}>
-                <div><div className="on">{i === 0 ? "★ " : ""}{o.name}</div>
-                  <div className="om">{o.vegFriendly ? "veg-friendly" : o.category}{o.rating ? ` · ★ ${o.rating}` : ""}</div></div>
-              </button>
-            ))}
-          </div>
+        <div className="dp-detail">{p.detail}</div>
+        {p.place && (
+          <a className="dp-map" href={p.place.mapsUrl} target="_blank" rel="noopener">
+            📍 {p.place.name} — view on map
+          </a>
         )}
       </div>
     </div>
   );
 }
 
-function Itinerary({ r, days, editMode, onEditToggle, onReset, setDays, docRef, onPDF, onWA }: {
-  r: ItineraryResult; days: Day[];
-  editMode: boolean; onEditToggle: () => void; onReset: () => void;
-  setDays: (d: Day[]) => void;
-  docRef: React.RefObject<HTMLDivElement | null>;
-  onPDF: () => void; onWA: () => void;
-}) {
-  const fx = r.pricing.fx;
-  const updateDay = (i: number, nd: Day) => setDays(days.map((x, j) => (j === i ? nd : x)));
+function DiningChip({ p }: { p: Place }) {
   return (
-    <>
-      <div className="toolbar">
-        <div>
-          <div style={{ fontWeight: 700 }}>{r.meta.title}</div>
-          <div style={{ fontSize: 12, color: "var(--muted)" }}>
-            {fmtRange(r.meta.startDate, r.meta.endDate)} · {r.meta.groupLabel}</div>
-        </div>
-        <div className="acts">
-          <button type="button" className={"ba" + (editMode ? " dl" : "")} onClick={onEditToggle}>
-            {editMode ? "💾 Save edits" : "✏️ Edit itinerary"}
-          </button>
-          {editMode && <button type="button" className="ba" onClick={onReset}>↺ Reset</button>}
-          <button type="button" className="ba" onClick={onWA}>📱 WhatsApp</button>
-          <button type="button" className="ba dl" onClick={onPDF}>⬇ Download PDF</button>
-        </div>
+    <a className="dchip" href={p.mapsUrl} target="_blank" rel="noopener">
+      {p.photoUrl
+        ? <img src={p.photoUrl} alt={p.name} loading="lazy" />
+        : <div className="dchip-fb">🍽️</div>}
+      <div className="dchip-b">
+        <div className="dchip-n">{p.name}</div>
+        <div className="dchip-m">{p.tag}{p.rating != null ? ` · ★ ${p.rating.toFixed(1)}` : ""}</div>
       </div>
-
-      <div className="doc" ref={docRef}>
-        <div className="cover">
-          <div className="bc">
-            <div className="brand-logo-chip"><img src="/assets/logo.png" alt="Rise & Shine" /></div>
-            <div><h3>Rise &amp; Shine Travel</h3><p>Ahmedabad · IATTE · BNI · ADTOI · Gujarat Tourism</p></div>
-          </div>
-          <div className="tag">Customised Itinerary</div>
-          <h1>{r.meta.title}</h1>
-          <div className="sub">{r.meta.tagline}</div>
-          <div className="grid">
-            <div className="gi"><div className="l">Prepared for</div><div className="v">{r.meta.groupLabel}</div></div>
-            <div className="gi"><div className="l">Dates</div><div className="v">{fmtRange(r.meta.startDate, r.meta.endDate)}</div></div>
-            <div className="gi"><div className="l">Tier</div><div className="v">{r.meta.budgetLabel}</div></div>
-            <div className="gi"><div className="l">Diet</div><div className="v">{r.meta.dietLabel}</div></div>
-          </div>
-        </div>
-
-        <div className="page">
-          <div className="ph"><div className="l"><img src="/assets/logo.png" alt="" />Rise &amp; Shine Travel</div>
-            <div className="pn">Pricing &amp; Booking Estimate</div></div>
-
-          <div className="h2">Indicative Package Pricing</div>
-          <div className="disclaimer">
-            <b>⚠ Subject to change.</b> {r.meta.disclaimer}
-          </div>
-          {r.pricing.priced === "live"
-            ? <span className="live"><span className="dot" />Flights &amp; hotels = live fetched totals · still subject to availability</span>
-            : <span className="live warn"><span className="dot" />Indicative sample rates — confirmed exactly on the booking call</span>}
-
-          {r.pricing.liveRows.length > 0 && (
-            <table className="ptab">
-              <tbody>
-                {r.pricing.liveRows.map((row, i) => (
-                  <tr key={i}><td>{row.label}</td><td>{inr(row.usd, fx)}</td></tr>
-                ))}
-                <tr className="gr"><td>Booking-assistance core</td><td>{inr(r.pricing.liveCoreUSD, fx)}</td></tr>
-              </tbody>
-            </table>
-          )}
-          <div className="subm" style={{ margin: "10px 0 4px" }}>Indicative add-ons — confirmed exactly on the booking call:</div>
-          <table className="ptab">
-            <tbody>
-              {r.pricing.addOnRows.map((row, i) => (
-                <tr className="sub" key={i}><td>{row.label}</td><td>≈ {inr(row.usd, fx)}</td></tr>
-              ))}
-              <tr className="sub"><td>Rise &amp; Shine planning &amp; service (12%)</td><td>≈ {inr(r.pricing.serviceUSD, fx)}</td></tr>
-              <tr className="gr"><td>Estimated package total</td><td>{inr(r.pricing.grandUSD, fx)}</td></tr>
-            </tbody>
-          </table>
-          <div className="ppp">
-            <div><div className="l">Approx. per person ({r.pricing.pax} sharing)</div>
-              <div style={{ fontSize: 11, opacity: .7 }}>FX ₹{fx}/$ · all figures indicative · not a guarantee of final fare or rate</div></div>
-            <div className="a">{inr(r.pricing.perPersonUSD, fx)}</div>
-          </div>
-        </div>
-
-        {(r.hotels || r.flights || r.visa) && (
-        <div className="page">
-          <div className="ph"><div className="l"><img src="/assets/logo.png" alt="" />Rise &amp; Shine Travel</div>
-            <div className="pn">Booking Assistance</div></div>
-
-          {r.hotels && (
-            <>
-              <div className="h2">Your Stay</div>
-              <Fresh s={r.freshness.hotels} />
-              {r.hotels.map((h, i) => {
-                const sv = h.strikeUSD ? Math.round((1 - h.totalUSD / h.strikeUSD) * 100) : 0;
-                return (
-                  <div className="hcard" key={i}>
-                    <iframe className="map" loading="lazy"
-                      src={`https://www.google.com/maps?q=${h.lat},${h.lng}&z=14&output=embed`} title={h.name} />
-                    <div className="bd">
-                      <div className="nm">{h.name}</div>
-                      <div className="ar">{h.area}</div>
-                      <div className="stars">{"★".repeat(h.stars)}{"☆".repeat(5 - h.stars)}</div>
-                      <div className="pills">
-                        <span className="pill rate">★ {h.rating}/10</span>
-                        {h.reviews > 0 && <span className="pill">{h.reviews.toLocaleString("en-IN")} reviews</span>}
-                        <span className="pill">{h.nights} night{h.nights > 1 ? "s" : ""}</span>
-                      </div>
-                      <div className="price">
-                        <span className="now">{inr(h.totalUSD, fx)}</span>
-                        {h.strikeUSD && <><span className="was">{inr(h.strikeUSD, fx)}</span><span className="sv">−{sv}%</span></>}
-                        <span className="u">(${h.totalUSD} · {h.nights}N · indicative)</span>
-                      </div>
-                      <a className="lnk" href={h.bookUrl} target="_blank" rel="noopener">Book ↗</a>
-                      <a className="lnk alt" href={`https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}`} target="_blank" rel="noopener">📍 Map ↗</a>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-
-          {r.flights && (
-            <>
-              <div className="h2" style={{ marginTop: 18 }}>Flights · from {r.meta.originAirport}</div>
-              <Fresh s={r.freshness.flights} />
-              <div className="fcard">
-                {[r.flights.outbound, r.flights.inbound].map((l, i) => (
-                  <div className="fleg" key={i}>
-                    <div><div className="fr">{l.label} · {l.route}</div>
-                      <div className="fs">{r.flights!.carrier} · {l.flights} · {l.stops}</div></div>
-                    <div className="ft">{l.dep}<br /><span style={{ color: "var(--ink-faint)" }}>→ {l.arr}</span><br />{l.dur}</div>
-                  </div>
-                ))}
-                <div className="fs" style={{ marginTop: 8 }}>{r.flights.fareNote}</div>
-              </div>
-            </>
-          )}
-
-          {r.visa && (
-            <>
-              <div className="h2" style={{ marginTop: 18 }}>Visa Assistance</div>
-              <span className="live warn"><span className="dot" />Fees + processing times subject to consulate updates</span>
-              <table className="ptab vtab">
-                <tbody>
-                  <tr><td>Visa type</td><td>{r.visa.type}</td></tr>
-                  <tr><td>Validity</td><td>{r.visa.validity}</td></tr>
-                  <tr><td>Processing</td><td>{r.visa.processing}</td></tr>
-                  <tr><td>Fee</td><td>{r.visa.fee}</td></tr>
-                  <tr><td>Documents</td><td>{r.visa.docs}</td></tr>
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
-        )}
-
-        <div className="page">
-          <div className="ph"><div className="l"><img src="/assets/logo.png" alt="" />Rise &amp; Shine Travel</div>
-            <div className="pn">Hour-by-Hour Plan</div></div>
-          <div className="h2">Your Day-by-Day Journey</div>
-          <div className="subm">Done-for-you — every hour planned with real places & diet-matched dining options.
-            &nbsp;<Fresh s={r.freshness.engine} /></div>
-          {days.map((d, i) => (
-            <DayCard key={d.dayIndex} d={d} editMode={editMode}
-              onChange={(nd) => updateDay(i, nd)} />
-          ))}
-        </div>
-
-        <div className="page">
-          <div className="ph"><div className="l"><img src="/assets/logo.png" alt="" />Rise &amp; Shine Travel</div>
-            <div className="pn">Traveller Intel</div></div>
-          <div className="h2">Validated Against Real Traveller Experience</div>
-          <div className="subm">Filtered for {r.meta.groupLabel.toLowerCase()} · {r.meta.dietLabel.toLowerCase()} &nbsp;<Fresh s={r.freshness.intel} /></div>
-          <div className="intel">
-            <div className="ic do"><h4>✅ Do</h4><ul>{r.intel.do.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
-            <div className="ic sk"><h4>⛔ Skip</h4><ul>{r.intel.skip.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
-            <div className="ic ms"><h4>⭐ Don&apos;t miss</h4><ul>{r.intel.miss.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
-          </div>
-          <div className="idiet">🍃 <b>Matched to your diet:</b> {r.intel.diet}</div>
-          <div className="isrc">{r.intel.sources}</div>
-        </div>
-
-        <div className="foot">
-          <div><span className="iata">IATTE</span> Rise &amp; Shine Travel · Ahmedabad</div>
-          <div>+91-79-2329 7232 · info@riseandshinetravel.com</div>
-        </div>
-      </div>
-    </>
+    </a>
   );
 }

@@ -1,168 +1,192 @@
 import { z } from "zod";
 
-/** Single physical place (restaurant, monument, attraction) from Google Places. */
-export const PlaceSchema = z.object({
-  name: z.string(),
-  category: z.string().describe("e.g. Temple, Beach, Museum, Restaurant"),
-  lat: z.number(),
-  lng: z.number(),
-  rating: z.number().nullable().describe("Google rating /5, null if unknown"),
-  reviews: z.number().nullable(),
-  priceLevel: z.number().nullable().describe("0-4, null if unknown"),
-  photoUrl: z.string().nullable(),
-  mapsUrl: z.string(),
-  vegFriendly: z.boolean().default(false),
-  tag: z.string().nullable().describe("short hook e.g. 'sunset point', 'Jain menu'"),
-});
-export type Place = z.infer<typeof PlaceSchema>;
+/**
+ * Itinerary schema — seed-driven demo build.
+ *
+ * Only TWO things are parsed at runtime: the form request (TripRequestSchema)
+ * and Claude's day plan (DayPlanSchema). Everything else — flights, hotels,
+ * visa, pricing — is assembled in code from lib/seed and typed as plain
+ * interfaces, so it can never drift at demo time.
+ */
 
-export const BlockKind = z.enum([
-  "travel", "checkin", "sightseeing", "activity", "meal", "leisure", "transfer",
-]);
-
-/** One timed block of a day, e.g. 09:00–10:00. */
-export const TimeBlockSchema = z.object({
-  start: z.string().describe("24h HH:MM"),
-  end: z.string().describe("24h HH:MM"),
-  kind: BlockKind,
-  title: z.string().describe("short, ≤6 words"),
-  detail: z.string().describe("one short sentence, ≤22 words"),
-  place: PlaceSchema.nullable(),
-  /** For kind==="meal": 2-3 real restaurant options to choose from. */
-  options: z.array(PlaceSchema).default([]),
-});
-export type TimeBlock = z.infer<typeof TimeBlockSchema>;
-
-export const DaySchema = z.object({
-  dayIndex: z.number(),
-  date: z.string().describe("YYYY-MM-DD"),
-  weekday: z.string(),
-  cityLabel: z.string().describe("e.g. Bangkok / Phuket — Kata"),
-  headline: z.string().describe("≤7 words, the theme of the day"),
-  efficiency: z.string().describe("one line on why this day is travel-efficient, e.g. 'tight Seminyak↔Canggu loop, ≤15 min hops'"),
-  skip: z.array(z.string()).default([]).describe("what to deliberately NOT do today and why (1 short line each)"),
-  blocks: z.array(TimeBlockSchema),
-});
-export type Day = z.infer<typeof DaySchema>;
-
-/** What the Claude engine returns (just the day plan — everything else is wired in code). */
-export const DayPlanSchema = z.object({ days: z.array(DaySchema) });
-export type DayPlan = z.infer<typeof DayPlanSchema>;
-
-// ── Non-LLM structured pieces (assembled by the orchestrator) ──
-
-export const FlightLeg = z.object({
-  label: z.string(), route: z.string(), flights: z.string(),
-  dep: z.string(), arr: z.string(), dur: z.string(), stops: z.string(),
-});
-export const FlightAlt = z.object({
-  carrier: z.string(), perAdultUSD: z.number(),
-  outbound: FlightLeg, inbound: FlightLeg, fareNote: z.string(),
-});
-export type FlightAlt = z.infer<typeof FlightAlt>;
-
-export const Flights = z.object({
-  carrier: z.string(),
-  outbound: FlightLeg, inbound: FlightLeg,
-  fareNote: z.string(),
-  perAdultUSD: z.number(),
-  source: z.enum(["live", "sample"]),
-  alternatives: z.array(FlightAlt).default([]),
-});
-export type Flights = z.infer<typeof Flights>;
-
-const HotelBase = z.object({
-  name: z.string(), area: z.string(), stars: z.number(),
-  rating: z.number(), reviews: z.number(), nights: z.number(),
-  totalUSD: z.number(), strikeUSD: z.number().nullable(),
-  lat: z.number(), lng: z.number(), bookUrl: z.string(),
-  photoUrl: z.string().nullable(), source: z.enum(["live", "sample"]),
-});
-export const Hotel = HotelBase.extend({
-  alternatives: z.array(HotelBase).default([]),
-});
-export type Hotel = z.infer<typeof Hotel>;
-
-export const Intel = z.object({
-  do: z.array(z.string()), skip: z.array(z.string()), miss: z.array(z.string()),
-  diet: z.string(), sources: z.string(), source: z.enum(["live", "sample"]),
-});
-export type Intel = z.infer<typeof Intel>;
-
+// ── Form request ──────────────────────────────────────────────────────────
 export const TripRequestSchema = z.object({
   clientName: z.string().default("Valued Guest"),
   clientPhone: z.string().default(""),
   email: z.string().email().optional(),
-  destinationKey: z.string(),
-  durationNights: z.number().int().min(2).max(20),
-  budgetTier: z.union([z.literal(3), z.literal(4), z.literal(5)]),
-  startDate: z.string(),
-  adults: z.number().int().min(1).max(20),
-  children: z.number().int().min(0).max(10).default(0), // ages 6–11
-  infants:  z.number().int().min(0).max(6).default(0),  // ages 0–5
-  childrenAges: z.array(z.number()).default([]),
+  destinationKey: z.enum(["thailand", "dubai", "kerala"]).default("thailand"),
   diet: z.enum(["veg", "jain", "non-veg", "mixed"]).default("veg"),
   interests: z.array(z.string()).default([]),
-  travelStyle: z.enum(["touristy", "balanced", "offbeat"]).default("balanced"),
   groupType: z.enum(["family", "solo", "honeymoon", "bikers"]).default("family"),
-  visaNeeded: z.boolean().default(false),
-  flightAssist: z.boolean().default(false),
-  hotelAssist:  z.boolean().default(false),
+  specialRequests: z.string().max(600).default(""),
 });
 export type TripRequest = z.infer<typeof TripRequestSchema>;
 
-export const PriceRow = z.object({
-  label: z.string(),
-  usd: z.number(),
-  kind: z.enum(["live", "estimate"]),
+// ── A photo-bearing place (venue or restaurant) ──────────────────────────
+export const PlaceSchema = z.object({
+  name: z.string(),
+  category: z.string(),
+  lat: z.number(),
+  lng: z.number(),
+  rating: z.number().nullable(),       // Google rating /5, null if unknown
+  photoUrl: z.string().nullable(),     // Google Places photo, by-name lookup
+  mapsUrl: z.string(),
+  tag: z.string().nullable(),          // small caption — cuisine / kid hint
 });
-export const PricingSchema = z.object({
-  fx: z.number(),
-  /** exact, fetched line items (flights + hotels) */
-  liveRows: z.array(PriceRow),
-  liveCoreUSD: z.number(),
-  /** clearly-indicative add-ons, confirmed on the booking call */
-  addOnRows: z.array(PriceRow),
-  addOnsUSD: z.number(),
-  serviceUSD: z.number(),
-  grandUSD: z.number(),
-  perPersonUSD: z.number(),
-  rooms: z.number(),
-  pax: z.number(),
-  /** "live" only when BOTH flights & hotels came from a live provider */
-  priced: z.enum(["live", "sample"]),
+export type Place = z.infer<typeof PlaceSchema>;
+
+// ── One slot of a day: Morning / Afternoon / Evening ─────────────────────
+export const DayPartKind = z.enum([
+  "travel", "transfer", "checkin", "sightseeing", "activity", "leisure", "cruise", "meal",
+]);
+
+export const DayPartSchema = z.object({
+  slot: z.enum(["Morning", "Afternoon", "Evening"]),
+  kind: DayPartKind,
+  title: z.string().describe("≤6 words"),
+  detail: z.string().describe("2-3 sentences — what the family actually does"),
+  placeName: z.string().nullable().describe("exact venue name from the seed list, or null"),
 });
-export type Pricing = z.infer<typeof PricingSchema>;
+
+export const DaySchema = z.object({
+  dayIndex: z.number(),
+  cityLabel: z.string(),
+  headline: z.string().describe("≤7 words — the theme of the day"),
+  efficiency: z.string().describe("one line on why today's routing is tight"),
+  skip: z.array(z.string()).min(1).describe("what NOT to do today and why"),
+  parts: z.array(DayPartSchema).min(2).max(3),
+  diningNames: z.array(z.string()).default([]).describe("2-3 restaurant names from the seed list"),
+});
+
+/** What Claude returns — names only; full Place objects are wired in code. */
+export const DayPlanSchema = z.object({ days: z.array(DaySchema) });
+export type DayPlanDay = z.infer<typeof DaySchema>;
+
+// ── Assembled result types (built in code, not parsed) ───────────────────
+export interface DayPart {
+  slot: "Morning" | "Afternoon" | "Evening";
+  kind: z.infer<typeof DayPartKind>;
+  title: string;
+  detail: string;
+  place: Place | null;
+}
+
+export interface Day {
+  dayIndex: number;
+  date: string;          // ISO YYYY-MM-DD
+  weekday: string;       // "Fri"
+  dateLabel: string;     // "20 Nov"
+  cityLabel: string;
+  headline: string;
+  efficiency: string;
+  skip: string[];
+  parts: DayPart[];
+  dining: Place[];
+}
+
+export interface FlightLeg {
+  label: string;         // "Outbound" / "Internal" / "Return"
+  airline: string;
+  flightNo: string;
+  fromCity: string;
+  fromCode: string;
+  toCity: string;
+  toCode: string;
+  dateLabel: string;     // "20 Nov 2026"
+  depTime: string;
+  arrTime: string;
+  duration: string;
+  cabin: string;
+  baggage: string;
+  stops: string;
+}
+export interface Flights {
+  legs: FlightLeg[];
+  note: string;
+}
+
+export interface HotelInfo {
+  name: string;
+  city: string;
+  area: string;
+  stars: number;
+  nights: number;
+  why: string;
+  amenities: string[];
+  lat: number;
+  lng: number;
+  kind: "hotel" | "houseboat";
+  dateLabel: string;     // "20–23 Nov"
+  photoUrl: string | null;
+}
 
 export interface VisaInfo {
-  type: string; validity: string; processing: string; fee: string; docs: string;
+  status: "free" | "required" | "not-required";
+  statusLabel: string;
+  type: string;
+  feeLabel: string;      // "₹0 — visa-free" / "₹6,710 per person"
+  stay: string;
+  processing: string;
+  mandatory: { title: string; detail: string } | null;
+  documents: string[];
+  riseShineHandles: string[];
+  note: string | null;
+}
+
+export interface PricingLine {
+  label: string;
+  amountINR: number;
+  zero?: boolean;        // render ₹0 lines softly (e.g. visa-free)
+}
+export interface Pricing {
+  lines: PricingLine[];
+  subtotalINR: number;
+  servicePct: number;
+  serviceINR: number;
+  totalINR: number;
+  perPersonINR: number;
+  displayPerPerson: string;   // "≈ ₹60,000"
+  bannerText: string;
+  pax: number;
+}
+
+export interface Intel {
+  do: string[];
+  skip: string[];
+  miss: string[];
+  diet: string;
+}
+
+export interface ItineraryMeta {
+  destinationKey: string;
+  destinationName: string;
+  title: string;
+  tagline: string;
+  flag: string;
+  scope: "domestic" | "international";
+  startDate: string;
+  endDate: string;
+  dateRangeLabel: string;     // "20–27 Nov 2026"
+  nights: number;
+  days: number;
+  originCity: string;
+  originAirport: string;
+  clientName: string;
+  clientPhone: string;
+  groupLabel: string;         // "2 Adults + 2 Children"
+  dietLabel: string;
+  interests: string[];
+  pulledAt: string;
 }
 
 export interface ItineraryResult {
-  meta: {
-    destinationName: string; title: string; tagline: string;
-    startDate: string; endDate: string; groupLabel: string;
-    dietLabel: string; budgetLabel: string; visaNeeded: boolean;
-    pulledAt: string;
-    /** Mandatory price/availability disclaimer — always present, always shown. */
-    disclaimer: string;
-    /** Origin airport (always AMD for Rise & Shine Travel, Ahmedabad). */
-    originAirport: string;
-  };
-  /** null when client hasn't requested flight assistance. */
-  flights: Flights | null;
-  /** null when client hasn't requested hotel assistance. */
-  hotels: Hotel[] | null;
-  /** null when client hasn't requested visa assistance. */
-  visa: VisaInfo | null;
+  meta: ItineraryMeta;
+  flights: Flights;
+  hotels: HotelInfo[];
+  visa: VisaInfo;
   days: Day[];
   intel: Intel;
   pricing: Pricing;
-  freshness: {
-    flights: "live" | "sample" | "indicative";
-    hotels:  "live" | "sample" | "indicative";
-    places:  "live" | "sample";
-    intel:   "live" | "sample";
-    engine:  "live" | "sample";
-  };
+  /** "live" when Claude composed the days; "template" on deterministic fallback. */
+  engine: "live" | "template";
 }
